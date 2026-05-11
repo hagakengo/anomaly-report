@@ -24,11 +24,6 @@ const SEVERITY_CLASS: Record<string, string> = {
   low: "bg-green-100 text-green-700",
 };
 
-const STATUS_LABEL: Record<string, string> = {
-  open: "未対応",
-  in_progress: "対応中",
-  resolved: "解決済み",
-};
 const STATUS_CLASS: Record<string, string> = {
   open: "bg-gray-100 text-gray-700",
   in_progress: "bg-blue-100 text-blue-700",
@@ -250,6 +245,13 @@ export default function ReportList() {
                       </td>
                       <td className="px-4 py-3 text-right">
                         <div className="flex items-center justify-end gap-2">
+                          <Link
+                            href={`/reports/${report.id}/edit`}
+                            className="text-xs text-gray-600 hover:text-blue-600 border border-gray-200 hover:border-blue-300 rounded px-2 py-1 transition-colors"
+                            title="編集"
+                          >
+                            編集
+                          </Link>
                           <a
                             href={getPdfUrl(report.id)}
                             target="_blank"

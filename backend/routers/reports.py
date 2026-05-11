@@ -72,6 +72,34 @@ def create_report(
     return crud.create_report(db, data, file_path=file_path, file_type=file_type)
 
 
+# --- 報告内容編集 ---
+@router.put("/{report_id}", response_model=ReportOut)
+def update_report(
+    report_id: int,
+    machine_name: str = Form(...),
+    location: str = Form(...),
+    description: str = Form(...),
+    severity: str = Form("medium"),
+    file: Optional[UploadFile] = File(None),
+    db: Session = Depends(get_db),
+):
+    file_path: Optional[str] = None
+    file_type: Optional[str] = None
+    if file and file.filename:
+        file_path, file_type = _save_upload(file)
+
+    data = ReportCreate(
+        machine_name=machine_name,
+        location=location,
+        description=description,
+        severity=severity,
+    )
+    report = crud.update_report(db, report_id, data, file_path=file_path, file_type=file_type)
+    if not report:
+        raise HTTPException(status_code=404, detail="報告が見つかりません")
+    return report
+
+
 # --- ステータス更新 ---
 @router.patch("/{report_id}", response_model=ReportOut)
 def update_status(

@@ -54,6 +54,28 @@ def update_report_status(db: Session, report_id: int, data: ReportUpdate) -> Opt
     return report
 
 
+def update_report(
+    db: Session,
+    report_id: int,
+    data: ReportCreate,
+    file_path: Optional[str] = None,
+    file_type: Optional[str] = None,
+) -> Optional[Report]:
+    report = get_report(db, report_id)
+    if not report:
+        return None
+    report.machine_name = data.machine_name
+    report.location = data.location
+    report.description = data.description
+    report.severity = data.severity
+    if file_path is not None:
+        report.file_path = file_path
+        report.file_type = file_type
+    db.commit()
+    db.refresh(report)
+    return report
+
+
 def delete_report(db: Session, report_id: int) -> bool:
     report = get_report(db, report_id)
     if not report:

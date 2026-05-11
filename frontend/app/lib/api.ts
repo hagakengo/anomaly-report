@@ -38,6 +38,12 @@ export async function createReport(formData: FormData): Promise<Report> {
   return res.json();
 }
 
+export async function updateReport(id: number, formData: FormData): Promise<Report> {
+  const res = await fetch(`${API_BASE}/reports/${id}`, { method: "PUT", body: formData });
+  if (!res.ok) throw new Error("報告の更新に失敗しました");
+  return res.json();
+}
+
 export async function updateReportStatus(id: number, status: Status): Promise<Report> {
   const res = await fetch(`${API_BASE}/reports/${id}`, {
     method: "PATCH",
