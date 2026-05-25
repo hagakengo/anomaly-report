@@ -1,17 +1,28 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   getReports,
   updateReportStatus,
   deleteReport,
-  getPdfUrl,
+  downloadPdf,
   getFileUrl,
+  getUnreadSummary,
   Report,
   Status,
   ReportFilters,
+  MessageSummary,
 } from "../lib/api";
+import { useAuth } from "../context/AuthContext";
+import {
+  requestNotificationPermission,
+  computeUnreadCounts,
+  detectNewMessages,
+  showBrowserNotification,
+  NewMessageItem,
+} from "../lib/notifications";
 
 const SEVERITY_LABEL: Record<string, string> = {
   high: "高",
@@ -24,19 +35,77 @@ const SEVERITY_CLASS: Record<string, string> = {
   low: "bg-green-100 text-green-700",
 };
 
+const STATUS_LABEL: Record<string, string> = {
+  open: "未対応",
+  in_progress: "対応中",
+  resolved: "解決済み",
+};
 const STATUS_CLASS: Record<string, string> = {
   open: "bg-gray-100 text-gray-700",
   in_progress: "bg-blue-100 text-blue-700",
   resolved: "bg-green-100 text-green-700",
 };
 
+function Toast({
+  toast,
+  onDismiss,
+  onNavigate,
+}: {
+  toast: NewMessageItem & { key: string };
+  onDismiss: (key: string) => void;
+  onNavigate: () => void;
+}) {
+  useEffect(() => {
+    const t = setTimeout(() => onDismiss(toast.key), 5000);
+    return () => clearTimeout(t);
+  }, [toast.key, onDismiss]);
+
+  return (
+    <div className="bg-white border border-gray-200 rounded-xl shadow-lg px-4 py-3 flex items-start gap-3 animate-in slide-in-from-right-4">
+      <div className="flex-1 min-w-0">
+        <p className="text-xs font-semibold text-blue-600">
+          新着メッセージ — 報告 #{toast.report_id}
+        </p>
+        <p className="text-sm text-gray-700 mt-0.5 truncate">
+          <span className="font-medium">{toast.sender_name}</span>:{" "}
+          {toast.preview}
+        </p>
+      </div>
+      <div className="flex items-center gap-1 shrink-0">
+        <button
+          onClick={onNavigate}
+          className="text-xs bg-blue-600 hover:bg-blue-700 text-white font-medium px-2.5 py-1 rounded-lg transition-colors"
+        >
+          チャットを見る
+        </button>
+        <button
+          onClick={() => onDismiss(toast.key)}
+          className="text-gray-400 hover:text-gray-600 ml-1"
+        >
+          ✕
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export default function ReportList() {
+  const { user, logout } = useAuth();
+  const router = useRouter();
+  const isAdmin = user?.role === "admin";
+
   const [reports, setReports] = useState<Report[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [filters, setFilters] = useState<ReportFilters>({});
   const [filterInput, setFilterInput] = useState({ machine_name: "", location: "", status: "" });
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [unreadCounts, setUnreadCounts] = useState<Record<number, number>>({});
+  const [toasts, setToasts] = useState<(NewMessageItem & { key: string })[]>([]);
+  const prevSummaryRef = useRef<MessageSummary[]>([]);
+
+  const dismissToast = (key: string) =>
+    setToasts((prev) => prev.filter((t) => t.key !== key));
 
   const fetchReports = useCallback(async () => {
     setLoading(true);
@@ -45,15 +114,63 @@ export default function ReportList() {
       const data = await getReports(filters);
       setReports(data);
     } catch (e) {
+      if (e instanceof Error && e.message === "UNAUTHORIZED") {
+        logout();
+        router.push("/login");
+        return;
+      }
       setError(e instanceof Error ? e.message : "エラーが発生しました");
     } finally {
       setLoading(false);
     }
-  }, [filters]);
+  }, [filters, logout, router]);
 
   useEffect(() => {
     fetchReports();
   }, [fetchReports]);
+
+  // 通知許可 + 未読サマリーポーリング
+  useEffect(() => {
+    requestNotificationPermission();
+
+    const pollSummary = async () => {
+      try {
+        const next = await getUnreadSummary();
+        const newItems = detectNewMessages(prevSummaryRef.current, next);
+
+        if (newItems.length > 0) {
+          if (document.visibilityState === "visible") {
+            // タブがアクティブ → 画面内トースト
+            setToasts((prev) => [
+              ...prev,
+              ...newItems.map((item) => ({
+                ...item,
+                key: `${item.report_id}-${item.latest_message_id}`,
+              })),
+            ]);
+          } else {
+            // タブが非アクティブ → OS ブラウザ通知
+            for (const item of newItems) {
+              showBrowserNotification(
+                `新着メッセージ (報告 #${item.report_id})`,
+                `${item.sender_name}: ${item.preview}`,
+                item.report_id,
+              );
+            }
+          }
+        }
+
+        prevSummaryRef.current = next;
+        setUnreadCounts(computeUnreadCounts(next));
+      } catch {
+        // ポーリングエラーはサイレントに無視
+      }
+    };
+
+    pollSummary();
+    const interval = setInterval(pollSummary, 10_000);
+    return () => clearInterval(interval);
+  }, []);
 
   const handleFilterApply = () => {
     setFilters({
@@ -87,6 +204,19 @@ export default function ReportList() {
     }
   };
 
+  const handleDownloadPdf = async (id: number) => {
+    try {
+      await downloadPdf(id);
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "PDF取得エラー");
+    }
+  };
+
+  const handleLogout = () => {
+    logout();
+    router.push("/login");
+  };
+
   return (
     <div className="min-h-screen bg-gray-50">
       {/* ヘッダー */}
@@ -96,13 +226,31 @@ export default function ReportList() {
             <h1 className="text-xl font-bold text-gray-900">異常報告管理</h1>
             <p className="text-sm text-gray-500">現場の異常報告を一元管理</p>
           </div>
-          <Link
-            href="/reports/new"
-            className="inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors"
-          >
-            <span className="text-base leading-none">＋</span>
-            新規報告
-          </Link>
+          <div className="flex items-center gap-3">
+            {user && (
+              <span className="text-sm text-gray-600">
+                {user.username}
+                {isAdmin && (
+                  <span className="ml-1.5 bg-purple-100 text-purple-700 text-xs font-medium px-1.5 py-0.5 rounded">
+                    管理者
+                  </span>
+                )}
+              </span>
+            )}
+            <button
+              onClick={handleLogout}
+              className="text-sm text-gray-500 hover:text-gray-700 border border-gray-200 rounded px-3 py-1 transition-colors"
+            >
+              ログアウト
+            </button>
+            <Link
+              href="/reports/new"
+              className="inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors"
+            >
+              <span className="text-base leading-none">＋</span>
+              新規報告
+            </Link>
+          </div>
         </div>
       </header>
 
@@ -190,7 +338,7 @@ export default function ReportList() {
                     <th className="px-4 py-3 w-40">ステータス</th>
                     <th className="px-4 py-3 w-36">報告日時</th>
                     <th className="px-4 py-3 w-40">添付</th>
-                    <th className="px-4 py-3 w-36 text-right">操作</th>
+                    <th className="px-4 py-3 text-right">操作</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
@@ -209,15 +357,21 @@ export default function ReportList() {
                         </span>
                       </td>
                       <td className="px-4 py-3">
-                        <select
-                          value={report.status}
-                          onChange={(e) => handleStatusChange(report.id, e.target.value as Status)}
-                          className={`text-xs font-medium px-2 py-1 rounded-lg border-0 cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-500 ${STATUS_CLASS[report.status]}`}
-                        >
-                          <option value="open">未対応</option>
-                          <option value="in_progress">対応中</option>
-                          <option value="resolved">解決済み</option>
-                        </select>
+                        {isAdmin ? (
+                          <select
+                            value={report.status}
+                            onChange={(e) => handleStatusChange(report.id, e.target.value as Status)}
+                            className={`text-xs font-medium px-2 py-1 rounded-lg border-0 cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-500 ${STATUS_CLASS[report.status]}`}
+                          >
+                            <option value="open">未対応</option>
+                            <option value="in_progress">対応中</option>
+                            <option value="resolved">解決済み</option>
+                          </select>
+                        ) : (
+                          <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${STATUS_CLASS[report.status]}`}>
+                            {STATUS_LABEL[report.status]}
+                          </span>
+                        )}
                       </td>
                       <td className="px-4 py-3 text-gray-500 text-xs whitespace-nowrap">
                         {report.reported_at.replace("T", " ")}
@@ -245,29 +399,42 @@ export default function ReportList() {
                       </td>
                       <td className="px-4 py-3 text-right">
                         <div className="flex items-center justify-end gap-2">
+                          {/* チャット: 全ユーザー */}
                           <Link
-                            href={`/reports/${report.id}/edit`}
-                            className="text-xs text-gray-600 hover:text-blue-600 border border-gray-200 hover:border-blue-300 rounded px-2 py-1 transition-colors"
-                            title="編集"
+                            href={`/reports/${report.id}/chat`}
+                            className="relative text-xs text-gray-600 hover:text-blue-600 border border-gray-200 hover:border-blue-300 rounded px-2 py-1 transition-colors"
                           >
-                            編集
+                            チャット
+                            {unreadCounts[report.id] ? (
+                              <span className="absolute -top-1.5 -right-1.5 bg-red-500 text-white text-[10px] font-bold rounded-full min-w-[16px] h-4 flex items-center justify-center px-0.5">
+                                {unreadCounts[report.id]}
+                              </span>
+                            ) : null}
                           </Link>
-                          <a
-                            href={getPdfUrl(report.id)}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="inline-flex items-center gap-1 text-xs text-gray-600 hover:text-red-600 border border-gray-200 hover:border-red-300 rounded px-2 py-1 transition-colors"
-                            title="PDF出力"
-                          >
-                            PDF
-                          </a>
-                          <button
-                            onClick={() => handleDelete(report.id)}
-                            className="text-xs text-gray-600 hover:text-red-600 border border-gray-200 hover:border-red-300 rounded px-2 py-1 transition-colors"
-                            title="削除"
-                          >
-                            削除
-                          </button>
+
+                          {/* 以下 admin のみ */}
+                          {isAdmin && (
+                            <>
+                              <Link
+                                href={`/reports/${report.id}/edit`}
+                                className="text-xs text-gray-600 hover:text-blue-600 border border-gray-200 hover:border-blue-300 rounded px-2 py-1 transition-colors"
+                              >
+                                編集
+                              </Link>
+                              <button
+                                onClick={() => handleDownloadPdf(report.id)}
+                                className="inline-flex items-center gap-1 text-xs text-gray-600 hover:text-red-600 border border-gray-200 hover:border-red-300 rounded px-2 py-1 transition-colors"
+                              >
+                                PDF
+                              </button>
+                              <button
+                                onClick={() => handleDelete(report.id)}
+                                className="text-xs text-gray-600 hover:text-red-600 border border-gray-200 hover:border-red-300 rounded px-2 py-1 transition-colors"
+                              >
+                                削除
+                              </button>
+                            </>
+                          )}
                         </div>
                       </td>
                     </tr>
@@ -283,6 +450,23 @@ export default function ReportList() {
           )}
         </div>
       </main>
+
+      {/* トースト通知 (右下固定) */}
+      {toasts.length > 0 && (
+        <div className="fixed bottom-4 right-4 flex flex-col gap-2 z-50 max-w-sm w-full">
+          {toasts.map((toast) => (
+            <Toast
+              key={toast.key}
+              toast={toast}
+              onDismiss={dismissToast}
+              onNavigate={() => {
+                dismissToast(toast.key);
+                router.push(`/reports/${toast.report_id}/chat`);
+              }}
+            />
+          ))}
+        </div>
+      )}
 
       {/* 画像プレビューモーダル */}
       {previewUrl && (

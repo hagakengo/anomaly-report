@@ -3,6 +3,8 @@ from typing import Optional
 from pydantic import BaseModel
 
 
+# ── 既存レポートスキーマ ────────────────────────────────────────
+
 class ReportCreate(BaseModel):
     machine_name: str
     location: str
@@ -24,5 +26,61 @@ class ReportOut(BaseModel):
     file_path: Optional[str] = None
     file_type: Optional[str] = None
     reported_at: str
+    user_id: Optional[int] = None
 
     model_config = {"from_attributes": True}
+
+
+# ── 認証スキーマ ────────────────────────────────────────────────
+
+class SignupRequest(BaseModel):
+    email: str
+    username: str
+    password: str
+
+
+class LoginRequest(BaseModel):
+    email: str
+    password: str
+
+
+class TokenOut(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+    role: str
+    username: str
+    user_id: int
+
+
+class UserOut(BaseModel):
+    id: int
+    email: str
+    username: str
+    role: str
+
+    model_config = {"from_attributes": True}
+
+
+# ── チャットスキーマ ────────────────────────────────────────────
+
+class MessageCreate(BaseModel):
+    content: str
+
+
+class MessageOut(BaseModel):
+    id: int
+    report_id: int
+    sender_id: int
+    sender_name: str
+    content: str
+    created_at: str
+
+    model_config = {"from_attributes": True}
+
+
+class MessageSummary(BaseModel):
+    report_id: int
+    latest_message_id: int
+    preview: str
+    sender_name: str
+    latest_at: str
