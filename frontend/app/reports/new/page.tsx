@@ -1,5 +1,5 @@
-import NewReportForm from "../../components/NewReportForm";
+import AiInterviewPage from "./AiInterviewPage";
 
 export default function NewReportPage() {
-  return <NewReportForm />;
+  return <AiInterviewPage />;
 }

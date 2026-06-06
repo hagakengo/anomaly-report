@@ -27,6 +27,8 @@ class ReportOut(BaseModel):
     file_type: Optional[str] = None
     reported_at: str
     user_id: Optional[int] = None
+    assignee_id: Optional[int] = None
+    assignee_name: Optional[str] = None
 
     model_config = {"from_attributes": True}
 
@@ -84,3 +86,25 @@ class MessageSummary(BaseModel):
     preview: str
     sender_name: str
     latest_at: str
+
+
+class AssignRequest(BaseModel):
+    assignee_id: Optional[int] = None
+
+
+class StatsOut(BaseModel):
+    monthly: list[dict]
+    by_severity: dict
+    by_status: dict
+    top_machines: list[dict]
+    recurring_machines: list[dict]
+
+
+class StatusLogOut(BaseModel):
+    id: int
+    report_id: int
+    user_id: Optional[int] = None
+    changed_by: str
+    old_status: str
+    new_status: str
+    changed_at: str

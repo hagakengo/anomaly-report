@@ -25,7 +25,7 @@ class User(Base):
     email      = Column(String, unique=True, nullable=False, index=True)
     username   = Column(String, nullable=False)
     hashed_pw  = Column(String, nullable=False)
-    role       = Column(String, nullable=False, default="customer")  # "admin" | "customer"
+    role       = Column(String, nullable=False, default="customer")  # "admin" | "customer" | "maker"
     created_at = Column(String, nullable=False,
                     server_default=text("(datetime('now', 'localtime'))"))
 
@@ -41,9 +41,11 @@ class Report(Base):
     status       = Column(String, nullable=False, default="open")    # open/in_progress/resolved
     file_path    = Column(String)
     file_type    = Column(String)                                     # image / video
-    reported_at  = Column(String, nullable=False,
-                    server_default=text("datetime('now', 'localtime')"))
-    user_id      = Column(Integer, ForeignKey("users.id"), nullable=True)
+    reported_at    = Column(String, nullable=False,
+                      server_default=text("datetime('now', 'localtime')"))
+    user_id        = Column(Integer, ForeignKey("users.id"), nullable=True)
+    assignee_id    = Column(Integer, ForeignKey("users.id"), nullable=True)
+    assignee_name  = Column(String, nullable=True)
 
 
 class Message(Base):
@@ -57,6 +59,18 @@ class Message(Base):
                     server_default=text("(datetime('now', 'localtime'))"))
 
 
+class StatusLog(Base):
+    __tablename__ = "status_logs"
+
+    id         = Column(Integer, primary_key=True, autoincrement=True)
+    report_id  = Column(Integer, ForeignKey("reports.id"), nullable=False)
+    user_id    = Column(Integer, ForeignKey("users.id"), nullable=True)
+    old_status = Column(String, nullable=False)
+    new_status = Column(String, nullable=False)
+    changed_at = Column(String, nullable=False,
+                    server_default=text("(datetime('now', 'localtime'))"))
+
+
 def get_db():
     db: Session = SessionLocal()
     try:
@@ -67,3 +81,15 @@ def get_db():
 
 def init_db() -> None:
     Base.metadata.create_all(bind=engine)
+    # 既存テーブルへの新カラム追加（ALTER TABLE は冪等に）
+    _migrations = [
+        "ALTER TABLE reports ADD COLUMN assignee_id INTEGER REFERENCES users(id)",
+        "ALTER TABLE reports ADD COLUMN assignee_name TEXT",
+    ]
+    with engine.connect() as conn:
+        for sql in _migrations:
+            try:
+                conn.execute(text(sql))
+                conn.commit()
+            except Exception:
+                pass

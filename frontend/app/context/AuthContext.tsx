@@ -1,12 +1,13 @@
 "use client";
 
 import { createContext, useContext, useState, useEffect, ReactNode } from "react";
-import { AuthUser, saveAuth, loadAuth, clearAuth, apiLogin, apiSignup } from "../lib/auth";
+import { AuthUser, saveAuth, loadAuth, clearAuth, apiLogin, apiSignup, apiSignupMaker } from "../lib/auth";
 
 interface AuthContextValue {
   user: AuthUser | null;
   login: (email: string, password: string) => Promise<void>;
   signup: (email: string, username: string, password: string) => Promise<void>;
+  signupMaker: (email: string, username: string, password: string) => Promise<void>;
   logout: () => void;
 }
 
@@ -32,13 +33,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(auth);
   };
 
+  const signupMaker = async (email: string, username: string, password: string) => {
+    const auth = await apiSignupMaker(email, username, password);
+    saveAuth(auth);
+    setUser(auth);
+  };
+
   const logout = () => {
     clearAuth();
     setUser(null);
   };
 
   return (
-    <AuthContext.Provider value={{ user, login, signup, logout }}>
+    <AuthContext.Provider value={{ user, login, signup, signupMaker, logout }}>
       {children}
     </AuthContext.Provider>
   );

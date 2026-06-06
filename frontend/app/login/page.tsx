@@ -28,58 +28,98 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
-      <div className="bg-white rounded-xl border border-gray-200 p-8 w-full max-w-sm shadow-sm">
-        <h1 className="text-xl font-bold text-gray-900 mb-2">ログイン</h1>
-        <p className="text-sm text-gray-500 mb-6">異常報告管理システム</p>
-
-        {error && (
-          <div className="bg-red-50 border border-red-200 text-red-700 rounded-lg px-4 py-3 text-sm mb-4">
-            {error}
+    <div className="min-h-screen flex">
+      {/* 左パネル */}
+      <div className="hidden lg:flex lg:w-1/2 bg-gradient-to-br from-indigo-700 via-indigo-800 to-slate-900 flex-col justify-between p-12 text-white">
+        <div>
+          <div className="flex items-center gap-3 mb-12">
+            <div className="w-9 h-9 bg-white/20 rounded-xl flex items-center justify-center backdrop-blur-sm">
+              <svg className="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+              </svg>
+            </div>
+            <span className="text-lg font-bold tracking-tight">異常報告管理システム</span>
           </div>
-        )}
+          <h2 className="text-4xl font-bold leading-tight mb-4">
+            現場の異常を<br />即座に共有
+          </h2>
+          <p className="text-indigo-200 text-base leading-relaxed">
+            AIヒアリングで報告書を自動作成。<br />
+            リアルタイム通知でチーム全体に即時連携します。
+          </p>
+        </div>
+        <div className="space-y-4">
+          {[
+            { icon: "✦", text: "AIが質問形式で詳細を収集・自動作成" },
+            { icon: "✦", text: "管理者へのリアルタイム WebSocket 通知" },
+            { icon: "✦", text: "メーカー・管理者・現場の三者連携" },
+          ].map((f) => (
+            <div key={f.text} className="flex items-center gap-3 text-indigo-100">
+              <span className="text-indigo-400 text-xs">{f.icon}</span>
+              <span className="text-sm">{f.text}</span>
+            </div>
+          ))}
+        </div>
+      </div>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              メールアドレス
-            </label>
-            <input
-              type="email"
-              required
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-              placeholder="example@email.com"
-            />
+      {/* 右パネル */}
+      <div className="flex-1 flex items-center justify-center px-6 py-12 bg-slate-50">
+        <div className="w-full max-w-sm">
+          <div className="mb-8">
+            <h1 className="text-2xl font-bold text-slate-900 mb-1">おかえりなさい</h1>
+            <p className="text-sm text-slate-500">アカウントにサインインしてください</p>
           </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              パスワード
-            </label>
-            <input
-              type="password"
-              required
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-          </div>
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-blue-300 text-white font-medium py-2.5 rounded-lg text-sm transition-colors"
-          >
-            {loading ? "ログイン中..." : "ログイン"}
-          </button>
-        </form>
 
-        <p className="mt-4 text-center text-sm text-gray-500">
-          アカウントがありませんか？{" "}
-          <Link href="/signup" className="text-blue-600 hover:underline">
-            新規登録
-          </Link>
-        </p>
+          {error && (
+            <div className="bg-red-50 border border-red-200 text-red-700 rounded-xl px-4 py-3 text-sm mb-6 flex items-start gap-2">
+              <span className="mt-0.5 shrink-0">⚠</span>
+              {error}
+            </div>
+          )}
+
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div>
+              <label className="block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wide">
+                メールアドレス
+              </label>
+              <input
+                type="email"
+                required
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                className="w-full bg-white border border-slate-200 rounded-xl px-4 py-3 text-sm text-slate-900 placeholder-slate-400 shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition"
+                placeholder="example@email.com"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wide">
+                パスワード
+              </label>
+              <input
+                type="password"
+                required
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className="w-full bg-white border border-slate-200 rounded-xl px-4 py-3 text-sm text-slate-900 placeholder-slate-400 shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition"
+                placeholder="••••••••"
+              />
+            </div>
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-300 text-white font-semibold py-3 rounded-xl text-sm transition-all shadow-sm hover:shadow-indigo-200 hover:shadow-md"
+            >
+              {loading ? "サインイン中..." : "サインイン"}
+            </button>
+          </form>
+
+          <p className="mt-6 text-center text-sm text-slate-500">
+            アカウントがありませんか？{" "}
+            <Link href="/signup" className="text-indigo-600 hover:text-indigo-700 font-semibold">
+              新規登録
+            </Link>
+          </p>
+        </div>
       </div>
     </div>
   );

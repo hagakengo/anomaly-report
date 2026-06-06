@@ -64,3 +64,14 @@ async def require_admin(
             detail="管理者権限が必要です",
         )
     return current_user
+
+
+async def require_staff(
+    current_user: User = Depends(get_current_user),
+) -> User:
+    if current_user.role not in ("admin", "maker"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="スタッフ権限が必要です",
+        )
+    return current_user
