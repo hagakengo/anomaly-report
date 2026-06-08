@@ -59,6 +59,7 @@ def list_reports(
     date_to: Optional[str] = None,
     sort_by: str = "reported_at",
     sort_order: str = "desc",
+    company_name: Optional[str] = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -68,6 +69,7 @@ def list_reports(
         machine_name=machine_name, location=location, status=status,
         severity=severity, date_from=date_from, date_to=date_to,
         sort_by=sort_by, sort_order=sort_order, user_id=uid,
+        company_name=company_name,
     )
 
 
@@ -111,6 +113,7 @@ def create_report(
         db,
         ReportCreate(machine_name=machine_name, location=location, description=description, severity=severity),
         file_path=file_path, file_type=file_type, user_id=current_user.id,
+        company_name=current_user.company_name,
     )
     recurrence = crud.get_recurrence_count(db, machine_name, report.id)
 

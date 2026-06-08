@@ -6,8 +6,8 @@ import { AuthUser, saveAuth, loadAuth, clearAuth, apiLogin, apiSignup, apiSignup
 interface AuthContextValue {
   user: AuthUser | null;
   login: (email: string, password: string) => Promise<void>;
-  signup: (email: string, username: string, password: string) => Promise<void>;
-  signupMaker: (email: string, username: string, password: string) => Promise<void>;
+  signup: (email: string, username: string, password: string, company_name?: string) => Promise<void>;
+  signupMaker: (email: string, username: string, password: string, company_name?: string) => Promise<void>;
   logout: () => void;
 }
 
@@ -27,14 +27,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(auth);
   };
 
-  const signup = async (email: string, username: string, password: string) => {
-    const auth = await apiSignup(email, username, password);
+  const signup = async (email: string, username: string, password: string, company_name?: string) => {
+    const auth = await apiSignup(email, username, password, company_name);
     saveAuth(auth);
     setUser(auth);
   };
 
-  const signupMaker = async (email: string, username: string, password: string) => {
-    const auth = await apiSignupMaker(email, username, password);
+  const signupMaker = async (email: string, username: string, password: string, company_name?: string) => {
+    const auth = await apiSignupMaker(email, username, password, company_name);
     saveAuth(auth);
     setUser(auth);
   };

@@ -13,6 +13,7 @@ export interface Report {
   status: Status;
   file_path: string | null;
   file_type: FileType | null;
+  company_name: string | null;
   reported_at: string;
   user_id: number | null;
   assignee_id: number | null;
@@ -28,6 +29,7 @@ export interface ReportFilters {
   date_to?: string;
   sort_by?: string;
   sort_order?: "asc" | "desc";
+  company_name?: string;
 }
 
 export interface Message {
@@ -68,6 +70,7 @@ export async function getReports(filters: ReportFilters = {}): Promise<Report[]>
   if (filters.date_to) url.searchParams.set("date_to", filters.date_to);
   if (filters.sort_by) url.searchParams.set("sort_by", filters.sort_by);
   if (filters.sort_order) url.searchParams.set("sort_order", filters.sort_order);
+  if (filters.company_name) url.searchParams.set("company_name", filters.company_name);
   const res = await fetch(url.toString(), {
     cache: "no-store",
     headers: authHeaders(),
@@ -288,13 +291,92 @@ export interface InterviewResponse {
   };
 }
 
+// ── 確認項目 ─────────────────────────────────────────────────────
+
+export interface CheckItem {
+  id: number;
+  content: string;
+  machine_name: string | null;
+  order_index: number;
+}
+
+export async function getCheckItems(machine_name?: string): Promise<CheckItem[]> {
+  const url = new URL(`${API_BASE}/check-items`);
+  if (machine_name) url.searchParams.set("machine_name", machine_name);
+  const res = await fetch(url.toString(), { cache: "no-store", headers: authHeaders() });
+  if (!res.ok) return [];
+  const data: CheckItem[] = await res.json();
+  return data.map((item) => ({ ...item, machine_name: item.machine_name ?? null }));
+}
+
+export async function getCheckItemMachines(): Promise<string[]> {
+  const res = await fetch(`${API_BASE}/check-items/machines`, {
+    cache: "no-store",
+    headers: authHeaders(),
+  });
+  if (!res.ok) return [];
+  return res.json();
+}
+
+export async function createCheckItem(content: string, order_index: number, machine_name?: string): Promise<CheckItem> {
+  const res = await fetch(`${API_BASE}/check-items`, {
+    method: "POST",
+    headers: authHeaders({ "Content-Type": "application/json" }),
+    body: JSON.stringify({ content, order_index, machine_name: machine_name || null }),
+  });
+  if (!res.ok) throw new Error("確認項目の作成に失敗しました");
+  return res.json();
+}
+
+export async function updateCheckItem(id: number, content: string, order_index: number, machine_name?: string): Promise<CheckItem> {
+  const res = await fetch(`${API_BASE}/check-items/${id}`, {
+    method: "PUT",
+    headers: authHeaders({ "Content-Type": "application/json" }),
+    body: JSON.stringify({ content, order_index, machine_name: machine_name || null }),
+  });
+  if (!res.ok) throw new Error("確認項目の更新に失敗しました");
+  return res.json();
+}
+
+export async function deleteCheckItem(id: number): Promise<void> {
+  const res = await fetch(`${API_BASE}/check-items/${id}`, {
+    method: "DELETE",
+    headers: authHeaders(),
+  });
+  if (!res.ok) throw new Error("確認項目の削除に失敗しました");
+}
+
+export async function dedupCheckItems(): Promise<{ deleted: number }> {
+  const res = await fetch(`${API_BASE}/check-items/dedup`, {
+    method: "DELETE",
+    headers: authHeaders(),
+  });
+  if (!res.ok) throw new Error("重複削除に失敗しました");
+  return res.json();
+}
+
+export interface InterviewSuggestions {
+  machine_names: string[];
+  locations: string[];
+}
+
+export async function getInterviewSuggestions(): Promise<InterviewSuggestions> {
+  const res = await fetch(`${API_BASE}/ai-interview/suggestions`, {
+    cache: "no-store",
+    headers: authHeaders(),
+  });
+  if (!res.ok) return { machine_names: [], locations: [] };
+  return res.json();
+}
+
 export async function sendInterviewMessage(
   messages: InterviewMessage[],
+  check_context?: string,
 ): Promise<InterviewResponse> {
   const res = await fetch(`${API_BASE}/ai-interview`, {
     method: "POST",
     headers: authHeaders({ "Content-Type": "application/json" }),
-    body: JSON.stringify({ messages }),
+    body: JSON.stringify({ messages, check_context }),
   });
   if (res.status === 401) throw new Error("UNAUTHORIZED");
   if (res.status === 503) {

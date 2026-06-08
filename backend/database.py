@@ -21,31 +21,33 @@ class Base(DeclarativeBase):
 class User(Base):
     __tablename__ = "users"
 
-    id         = Column(Integer, primary_key=True, autoincrement=True)
-    email      = Column(String, unique=True, nullable=False, index=True)
-    username   = Column(String, nullable=False)
-    hashed_pw  = Column(String, nullable=False)
-    role       = Column(String, nullable=False, default="customer")  # "admin" | "customer" | "maker"
-    created_at = Column(String, nullable=False,
-                    server_default=text("(datetime('now', 'localtime'))"))
+    id           = Column(Integer, primary_key=True, autoincrement=True)
+    email        = Column(String, unique=True, nullable=False, index=True)
+    username     = Column(String, nullable=False)
+    hashed_pw    = Column(String, nullable=False)
+    role         = Column(String, nullable=False, default="customer")  # "admin" | "customer" | "maker"
+    company_name = Column(String, nullable=True)
+    created_at   = Column(String, nullable=False,
+                      server_default=text("(datetime('now', 'localtime'))"))
 
 
 class Report(Base):
     __tablename__ = "reports"
 
-    id           = Column(Integer, primary_key=True, autoincrement=True)
-    machine_name = Column(String, nullable=False)
-    location     = Column(String, nullable=False)
-    description  = Column(String, nullable=False)
-    severity     = Column(String, nullable=False, default="medium")  # high/medium/low
-    status       = Column(String, nullable=False, default="open")    # open/in_progress/resolved
-    file_path    = Column(String)
-    file_type    = Column(String)                                     # image / video
-    reported_at    = Column(String, nullable=False,
+    id            = Column(Integer, primary_key=True, autoincrement=True)
+    machine_name  = Column(String, nullable=False)
+    location      = Column(String, nullable=False)
+    description   = Column(String, nullable=False)
+    severity      = Column(String, nullable=False, default="medium")  # high/medium/low
+    status        = Column(String, nullable=False, default="open")    # open/in_progress/resolved
+    file_path     = Column(String)
+    file_type     = Column(String)                                     # image / video
+    company_name  = Column(String, nullable=True)
+    reported_at   = Column(String, nullable=False,
                       server_default=text("datetime('now', 'localtime')"))
-    user_id        = Column(Integer, ForeignKey("users.id"), nullable=True)
-    assignee_id    = Column(Integer, ForeignKey("users.id"), nullable=True)
-    assignee_name  = Column(String, nullable=True)
+    user_id       = Column(Integer, ForeignKey("users.id"), nullable=True)
+    assignee_id   = Column(Integer, ForeignKey("users.id"), nullable=True)
+    assignee_name = Column(String, nullable=True)
 
 
 class Message(Base):
@@ -57,6 +59,17 @@ class Message(Base):
     content    = Column(String, nullable=False)
     created_at = Column(String, nullable=False,
                     server_default=text("(datetime('now', 'localtime'))"))
+
+
+class CheckItem(Base):
+    __tablename__ = "check_items"
+
+    id           = Column(Integer, primary_key=True, autoincrement=True)
+    content      = Column(String, nullable=False)
+    machine_name = Column(String, nullable=True)   # NULL = 全機器共通
+    order_index  = Column(Integer, nullable=False, default=0)
+    created_at   = Column(String, nullable=False,
+                      server_default=text("(datetime('now', 'localtime'))"))
 
 
 class StatusLog(Base):
@@ -85,6 +98,9 @@ def init_db() -> None:
     _migrations = [
         "ALTER TABLE reports ADD COLUMN assignee_id INTEGER REFERENCES users(id)",
         "ALTER TABLE reports ADD COLUMN assignee_name TEXT",
+        "ALTER TABLE reports ADD COLUMN company_name TEXT",
+        "ALTER TABLE users ADD COLUMN company_name TEXT",
+        "ALTER TABLE check_items ADD COLUMN machine_name TEXT",
     ]
     with engine.connect() as conn:
         for sql in _migrations:

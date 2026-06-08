@@ -17,6 +17,7 @@ def get_reports(
     sort_by: str = "reported_at",
     sort_order: str = "desc",
     user_id: Optional[int] = None,
+    company_name: Optional[str] = None,
 ) -> list[Report]:
     q = db.query(Report)
     if machine_name:
@@ -33,6 +34,8 @@ def get_reports(
         q = q.filter(Report.reported_at <= date_to + " 23:59:59")
     if user_id is not None:
         q = q.filter(Report.user_id == user_id)
+    if company_name:
+        q = q.filter(Report.company_name.contains(company_name))
 
     col = {
         "reported_at": Report.reported_at,
@@ -58,6 +61,7 @@ def create_report(
     file_path: Optional[str] = None,
     file_type: Optional[str] = None,
     user_id: Optional[int] = None,
+    company_name: Optional[str] = None,
 ) -> Report:
     report = Report(
         machine_name=data.machine_name,
@@ -67,6 +71,7 @@ def create_report(
         file_path=file_path,
         file_type=file_type,
         user_id=user_id,
+        company_name=company_name,
     )
     db.add(report)
     db.commit()

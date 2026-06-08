@@ -52,11 +52,11 @@ export async function apiLogin(email: string, password: string): Promise<AuthUse
   };
 }
 
-async function _signup(url: string, email: string, username: string, password: string): Promise<AuthUser> {
+async function _signup(url: string, email: string, username: string, password: string, company_name?: string): Promise<AuthUser> {
   const res = await fetch(url, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ email, username, password }),
+    body: JSON.stringify({ email, username, password, company_name }),
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
@@ -71,10 +71,10 @@ async function _signup(url: string, email: string, username: string, password: s
   };
 }
 
-export function apiSignup(email: string, username: string, password: string): Promise<AuthUser> {
-  return _signup(`${API_BASE}/auth/signup`, email, username, password);
+export function apiSignup(email: string, username: string, password: string, company_name?: string): Promise<AuthUser> {
+  return _signup(`${API_BASE}/auth/signup`, email, username, password, company_name);
 }
 
-export function apiSignupMaker(email: string, username: string, password: string): Promise<AuthUser> {
-  return _signup(`${API_BASE}/auth/signup/maker`, email, username, password);
+export function apiSignupMaker(email: string, username: string, password: string, company_name?: string): Promise<AuthUser> {
+  return _signup(`${API_BASE}/auth/signup/maker`, email, username, password, company_name);
 }

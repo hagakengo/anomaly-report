@@ -12,14 +12,20 @@ from reportlab.pdfbase.ttfonts import TTFont
 
 from database import Report
 
-# --- フォント設定（Windows標準のメイリオを使用）---
-_FONT_NAME = "Helvetica"  # フォールバック
-
 def _register_japanese_font() -> str:
     candidates = [
+        # バンドルフォント（最優先）
+        (os.path.join(os.path.dirname(__file__), "ipaexg.ttf"), "IPAexGothic"),
+        # macOS
+        ("/System/Library/Fonts/ヒラギノ角ゴ ProN W3.ttc", "HiraginoKaku"),
+        ("/System/Library/Fonts/Hiragino Sans GB.ttc", "HiraginoSansGB"),
+        # Windows
         ("c:/Windows/Fonts/meiryo.ttc", "Meiryo"),
         ("c:/Windows/Fonts/msgothic.ttc", "MSGothic"),
         ("c:/Windows/Fonts/YuGothM.ttc", "YuGothic"),
+        # Linux
+        ("/usr/share/fonts/opentype/ipafont-gothic/ipagp.ttf", "IPAGothic"),
+        ("/usr/share/fonts/truetype/fonts-japanese-gothic.ttf", "JapaneseGothic"),
     ]
     for path, name in candidates:
         if os.path.exists(path):

@@ -41,7 +41,7 @@ export default function NewReportForm() {
       <header className="bg-white border-b border-slate-200 sticky top-0 z-10 shadow-sm">
         <div className="max-w-2xl mx-auto px-4 sm:px-6 py-4 flex items-center gap-4">
           <button
-            onClick={() => router.back()}
+            onClick={() => router.push("/reports/new")}
             className="text-slate-400 hover:text-slate-600 transition-colors"
           >
             <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -177,7 +177,7 @@ export default function NewReportForm() {
             </button>
             <button
               type="button"
-              onClick={() => router.back()}
+              onClick={() => router.push("/reports/new")}
               className="px-6 bg-white border border-slate-200 hover:bg-slate-50 text-slate-600 font-medium py-3 rounded-xl text-sm transition-colors"
             >
               キャンセル

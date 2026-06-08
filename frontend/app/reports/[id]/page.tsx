@@ -53,7 +53,7 @@ export default function ReportDetailPage() {
         setLogs(l);
         setRecurrenceCount(rec.count);
         setAssigneeId(r.assignee_id);
-        if (isAdmin) {
+        if (isAdmin || isMaker) {
           const s = await getStaff();
           setStaff(s);
         }

@@ -16,6 +16,7 @@ def _create_user(db: Session, data: SignupRequest, role: str) -> TokenOut:
         username=data.username,
         hashed_pw=hash_password(data.password),
         role=role,
+        company_name=data.company_name,
     )
     db.add(user)
     db.commit()

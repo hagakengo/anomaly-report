@@ -25,6 +25,7 @@ class ReportOut(BaseModel):
     status: str
     file_path: Optional[str] = None
     file_type: Optional[str] = None
+    company_name: Optional[str] = None
     reported_at: str
     user_id: Optional[int] = None
     assignee_id: Optional[int] = None
@@ -39,6 +40,7 @@ class SignupRequest(BaseModel):
     email: str
     username: str
     password: str
+    company_name: Optional[str] = None
 
 
 class LoginRequest(BaseModel):
@@ -59,6 +61,7 @@ class UserOut(BaseModel):
     email: str
     username: str
     role: str
+    company_name: Optional[str] = None
 
     model_config = {"from_attributes": True}
 

@@ -3,12 +3,15 @@ import os
 import re
 from typing import Optional
 
+from collections import Counter
+
 from fastapi import APIRouter, Depends, HTTPException
 from groq import Groq
 from pydantic import BaseModel
+from sqlalchemy.orm import Session
 
 from auth import get_current_user
-from database import User
+from database import Report, User, get_db
 
 router = APIRouter(prefix="/ai-interview", tags=["ai-interview"])
 
@@ -40,12 +43,32 @@ class InterviewMessage(BaseModel):
 
 class InterviewRequest(BaseModel):
     messages: list[InterviewMessage]
+    check_context: Optional[str] = None
 
 
 class InterviewResponse(BaseModel):
     content: str
     complete: bool = False
     report_data: Optional[dict] = None
+
+
+class SuggestionsResponse(BaseModel):
+    machine_names: list[str]
+    locations: list[str]
+
+
+@router.get("/suggestions", response_model=SuggestionsResponse)
+def get_suggestions(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    reports = db.query(Report.machine_name, Report.location).all()
+    machine_counts = Counter(r.machine_name for r in reports if r.machine_name)
+    location_counts = Counter(r.location for r in reports if r.location)
+    return SuggestionsResponse(
+        machine_names=[name for name, _ in machine_counts.most_common(8)],
+        locations=[loc for loc, _ in location_counts.most_common(8)],
+    )
 
 
 @router.post("", response_model=InterviewResponse)
@@ -61,7 +84,10 @@ async def interview(
         )
 
     client = Groq(api_key=api_key)
-    messages = [{"role": "system", "content": SYSTEM_PROMPT}]
+    system_prompt = SYSTEM_PROMPT
+    if req.check_context:
+        system_prompt += f"\n\n【事前確認結果】\n{req.check_context}\n上記の確認結果を踏まえてヒアリングしてください。異常ありの項目があれば症状の詳細を重点的に確認してください。"
+    messages = [{"role": "system", "content": system_prompt}]
     messages += [{"role": m.role, "content": m.content} for m in req.messages]
 
     response = client.chat.completions.create(

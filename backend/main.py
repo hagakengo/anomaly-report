@@ -11,6 +11,7 @@ from routers import reports
 from routers import auth as auth_router
 from routers import chat as chat_router
 from routers import ai_interview as ai_interview_router
+from routers import check_items as check_items_router
 from routers.chat import summary_router
 from ws_manager import manager
 
@@ -33,6 +34,7 @@ app.include_router(reports.router)
 app.include_router(summary_router)
 app.include_router(chat_router.router)
 app.include_router(ai_interview_router.router)
+app.include_router(check_items_router.router)
 
 app.mount("/files", StaticFiles(directory=UPLOAD_DIR), name="files")
 

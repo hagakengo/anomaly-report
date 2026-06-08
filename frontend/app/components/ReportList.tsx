@@ -127,6 +127,7 @@ export default function ReportList() {
   const [filterInput, setFilterInput] = useState({
     machine_name: "", location: "", status: "", severity: "",
     date_from: "", date_to: "", sort_by: "reported_at", sort_order: "desc" as "asc" | "desc",
+    company_name: "",
   });
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [unreadCounts, setUnreadCounts] = useState<Record<number, number>>({});
@@ -219,9 +220,10 @@ export default function ReportList() {
     date_to: filterInput.date_to || undefined,
     sort_by: filterInput.sort_by,
     sort_order: filterInput.sort_order,
+    company_name: filterInput.company_name || undefined,
   });
   const handleFilterReset = () => {
-    setFilterInput({ machine_name: "", location: "", status: "", severity: "", date_from: "", date_to: "", sort_by: "reported_at", sort_order: "desc" });
+    setFilterInput({ machine_name: "", location: "", status: "", severity: "", date_from: "", date_to: "", sort_by: "reported_at", sort_order: "desc", company_name: "" });
     setFilters({});
   };
 
@@ -243,6 +245,31 @@ export default function ReportList() {
   const handleDownloadPdf = async (id: number) => {
     try { await downloadPdf(id); } catch (e) { alert(e instanceof Error ? e.message : "PDF取得エラー"); }
   };
+
+  // 新着報告の既読管理
+  const [dismissedIds, setDismissedIds] = useState<Set<number>>(() => {
+    if (typeof window === "undefined") return new Set();
+    try {
+      const raw = localStorage.getItem("dismissed_new_reports");
+      return new Set(raw ? JSON.parse(raw) : []);
+    } catch { return new Set(); }
+  });
+  const dismissNewReport = (id: number) => {
+    setDismissedIds((prev) => {
+      const next = new Set(prev).add(id);
+      localStorage.setItem("dismissed_new_reports", JSON.stringify([...next]));
+      return next;
+    });
+  };
+
+  // 会社タブ（管理者・メーカー用）
+  const [activeCompany, setActiveCompany] = useState<string | null>(null);
+  const companies = (isAdmin || isMaker)
+    ? Array.from(new Set(reports.map((r) => r.company_name).filter(Boolean) as string[])).sort()
+    : [];
+  const visibleReports = activeCompany
+    ? reports.filter((r) => r.company_name === activeCompany)
+    : reports;
 
   // Stats
   const stats = {
@@ -283,6 +310,14 @@ export default function ReportList() {
                   <span className="bg-orange-100 text-orange-700 text-xs font-semibold px-2 py-0.5 rounded-full">メーカー</span>
                 )}
               </div>
+            )}
+            {(isAdmin || isMaker) && (
+              <Link
+                href="/settings"
+                className="text-xs text-slate-500 hover:text-slate-700 border border-slate-200 hover:border-slate-300 rounded-lg px-3 py-1.5 transition-colors hidden sm:inline-flex items-center gap-1"
+              >
+                設定
+              </Link>
             )}
             <Link
               href="/stats"
@@ -331,9 +366,91 @@ export default function ReportList() {
           ))}
         </div>
 
+        {/* 会社タブ（管理者・メーカーのみ） */}
+        {(isAdmin || isMaker) && !loading && companies.length > 0 && (
+          <div className="flex gap-1 overflow-x-auto pb-1">
+            <button
+              onClick={() => setActiveCompany(null)}
+              className={`shrink-0 px-4 py-1.5 rounded-full text-xs font-semibold transition-colors ${
+                activeCompany === null
+                  ? "bg-indigo-600 text-white"
+                  : "bg-white border border-slate-200 text-slate-500 hover:border-indigo-300 hover:text-indigo-600"
+              }`}
+            >
+              すべて ({reports.length})
+            </button>
+            {companies.map((company) => (
+              <button
+                key={company}
+                onClick={() => setActiveCompany(company)}
+                className={`shrink-0 px-4 py-1.5 rounded-full text-xs font-semibold transition-colors ${
+                  activeCompany === company
+                    ? "bg-indigo-600 text-white"
+                    : "bg-white border border-slate-200 text-slate-500 hover:border-indigo-300 hover:text-indigo-600"
+                }`}
+              >
+                {company} ({reports.filter((r) => r.company_name === company).length})
+              </button>
+            ))}
+          </div>
+        )}
+
+        {/* 新着報告 */}
+        {!loading && reports.slice(0, 5).some((r) => !dismissedIds.has(r.id)) && (
+          <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+            <div className="px-4 py-3 border-b border-slate-100 flex items-center justify-between">
+              <h2 className="text-sm font-semibold text-slate-700">新着報告</h2>
+              <span className="text-xs text-slate-400">直近5件</span>
+            </div>
+            <div className="divide-y divide-slate-50">
+              {reports.slice(0, 5).filter((r) => !dismissedIds.has(r.id)).map((report) => (
+                <div key={report.id} className="flex items-center gap-3 px-4 py-3 hover:bg-slate-50 transition-colors group">
+                  <Link href={`/reports/${report.id}`} className="flex items-center gap-3 flex-1 min-w-0">
+                  <span className={`w-2 h-2 rounded-full shrink-0 ${SEVERITY_DOT[report.severity] ?? "bg-slate-300"}`} />
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-semibold text-slate-800 truncate">{report.machine_name}</span>
+                      <span className={`shrink-0 inline-block px-2 py-0.5 rounded-full text-xs font-semibold ${SEVERITY_CLASS[report.severity]}`}>
+                        {SEVERITY_LABEL[report.severity]}
+                      </span>
+                    </div>
+                    <span className="text-xs text-slate-400 truncate">{report.location}</span>
+                  </div>
+                  <div className="text-right shrink-0">
+                    <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-semibold ${STATUS_CLASS[report.status]}`}>
+                      {STATUS_LABEL[report.status]}
+                    </span>
+                    <p className="text-xs text-slate-300 mt-0.5">{report.reported_at.replace("T", " ").slice(0, 16)}</p>
+                  </div>
+                  </Link>
+                  <button
+                    onClick={() => dismissNewReport(report.id)}
+                    className="shrink-0 text-slate-200 hover:text-slate-500 text-lg leading-none opacity-0 group-hover:opacity-100 transition-opacity ml-1"
+                    title="確認済みにする"
+                  >
+                    ×
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* フィルター */}
         <div className="bg-white rounded-xl border border-slate-200 px-4 py-3.5 shadow-sm">
           <div className="flex flex-wrap gap-3 items-end">
+            {(isAdmin || isMaker) && (
+              <div>
+                <label className="block text-xs font-semibold text-slate-500 mb-1">会社名</label>
+                <input
+                  type="text"
+                  value={filterInput.company_name}
+                  onChange={(e) => setFilterInput((f) => ({ ...f, company_name: e.target.value }))}
+                  placeholder="絞り込み..."
+                  className="border border-slate-200 bg-slate-50 rounded-lg px-3 py-2 text-sm w-36 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white transition"
+                />
+              </div>
+            )}
             <div>
               <label className="block text-xs font-semibold text-slate-500 mb-1">機器名</label>
               <input
@@ -450,7 +567,7 @@ export default function ReportList() {
               <div className="w-8 h-8 border-2 border-indigo-200 border-t-indigo-500 rounded-full animate-spin" />
               <span className="text-sm">読み込み中...</span>
             </div>
-          ) : reports.length === 0 ? (
+          ) : visibleReports.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-24 text-slate-400 gap-3">
               <div className="w-14 h-14 rounded-2xl bg-slate-100 flex items-center justify-center text-2xl">📋</div>
               <span className="text-sm font-medium">報告がありません</span>
@@ -463,6 +580,9 @@ export default function ReportList() {
                   <tr className="border-b border-slate-100">
                     <th className="px-4 py-3 text-left text-xs font-semibold text-slate-400 uppercase tracking-wider w-14">No.</th>
                     <th className="px-4 py-3 text-left text-xs font-semibold text-slate-400 uppercase tracking-wider">機器名</th>
+                    {(isAdmin || isMaker) && (
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-slate-400 uppercase tracking-wider w-32">会社名</th>
+                    )}
                     <th className="px-4 py-3 text-left text-xs font-semibold text-slate-400 uppercase tracking-wider">場所</th>
                     <th className="px-4 py-3 text-left text-xs font-semibold text-slate-400 uppercase tracking-wider w-20">重要度</th>
                     <th className="px-4 py-3 text-left text-xs font-semibold text-slate-400 uppercase tracking-wider w-44">ステータス</th>
@@ -473,7 +593,7 @@ export default function ReportList() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-50">
-                  {reports.map((report) => (
+                  {visibleReports.map((report) => (
                     <tr key={report.id} className="hover:bg-slate-50/80 transition-colors group">
                       <td className="px-4 py-3.5 text-slate-300 font-mono text-xs">#{report.id}</td>
                       <td className="px-4 py-3.5 max-w-[180px] truncate" title={report.machine_name}>
@@ -481,6 +601,11 @@ export default function ReportList() {
                           {report.machine_name}
                         </Link>
                       </td>
+                      {(isAdmin || isMaker) && (
+                        <td className="px-4 py-3.5 text-xs text-slate-500 max-w-[120px] truncate" title={report.company_name ?? ""}>
+                          {report.company_name ?? <span className="text-slate-200">—</span>}
+                        </td>
+                      )}
                       <td className="px-4 py-3.5 text-slate-500 text-xs max-w-[150px] truncate" title={report.location}>
                         {report.location}
                       </td>
@@ -569,9 +694,9 @@ export default function ReportList() {
               </table>
             </div>
           )}
-          {!loading && reports.length > 0 && (
+          {!loading && visibleReports.length > 0 && (
             <div className="px-4 py-2.5 border-t border-slate-100 text-xs text-slate-400 font-medium">
-              {reports.length} 件
+              {visibleReports.length} 件
             </div>
           )}
         </div>
