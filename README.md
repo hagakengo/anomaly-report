@@ -33,7 +33,7 @@
 | レイヤー | 技術 |
 |---|---|
 | フロントエンド | Next.js 16 (Turbopack) / React 19 / TypeScript / Tailwind CSS v4 |
-| バックエンド | Django / Django REST Framework / SQLite |
+| バックエンド | Django / Django REST Framework / PostgreSQL |
 | 認証 | SimpleJWT（役割：admin / maker / customer）|
 | AI | Groq API（Llama 3.3 70B）|
 | PDF生成 | ReportLab + IPAex ゴシック |
@@ -160,7 +160,21 @@ sudo apt update && sudo apt upgrade -y
 sudo apt install -y python3-pip python3-venv nginx certbot python3-certbot-nginx git
 ```
 
-**3. デプロイ**
+**3. PostgreSQL セットアップ**
+
+```bash
+sudo apt install -y postgresql postgresql-contrib
+sudo -u postgres psql
+```
+
+```sql
+CREATE DATABASE anomaly_report;
+CREATE USER anomaly_user WITH PASSWORD 'your_password';
+GRANT ALL PRIVILEGES ON DATABASE anomaly_report TO anomaly_user;
+\q
+```
+
+**4. デプロイ**
 
 ```bash
 git clone git@github.com:hagakengo/anomaly-report.git
@@ -179,9 +193,15 @@ ALLOWED_HOSTS=<1-2-3-4>.nip.io,127.0.0.1
 GROQ_API_KEY=your_groq_api_key_here
 ALLOWED_ORIGINS=https://your-vercel-app.vercel.app
 UPLOAD_DIR=/home/ubuntu/anomaly-report/backend/uploads
+DB_ENGINE=django.db.backends.postgresql
+DB_NAME=anomaly_report
+DB_USER=anomaly_user
+DB_PASSWORD=your_password
+DB_HOST=localhost
+DB_PORT=5432
 ```
 
-**4. systemd で常駐化**
+**5. systemd で常駐化**
 
 `/etc/systemd/system/anomaly.service` を作成：
 
@@ -209,7 +229,7 @@ sudo systemctl enable anomaly
 sudo systemctl start anomaly
 ```
 
-**5. Nginx 設定**
+**6. Nginx 設定**
 
 `/etc/nginx/sites-available/anomaly` を作成：
 
@@ -234,7 +254,7 @@ sudo rm /etc/nginx/sites-enabled/default
 sudo systemctl reload nginx
 ```
 
-**6. HTTPS 化**
+**7. HTTPS 化**
 
 ドメインなしの場合は nip.io を使用（IPの`.`を`-`に変換）：
 
