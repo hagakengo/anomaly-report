@@ -24,7 +24,7 @@
 | **担当者アサイン** | 報告にスタッフをアサインしてステータス管理 |
 | **確認項目の設定** | 機器グループごとに事前確認項目を登録・編集・削除 |
 | **PDF出力** | 報告内容と添付画像を含むA4帳票を自動生成 |
-| **WebSocket通知** | 新着報告がリアルタイムで通知される |
+| **未読バッジ** | 新着メッセージをダッシュボードでバッジ表示 |
 
 ---
 
@@ -33,13 +33,12 @@
 | レイヤー | 技術 |
 |---|---|
 | フロントエンド | Next.js 16 (Turbopack) / React 19 / TypeScript / Tailwind CSS v4 |
-| バックエンド | FastAPI / SQLAlchemy / SQLite |
+| バックエンド | Django / Django REST Framework / SQLite |
+| 認証 | SimpleJWT（役割：admin / maker / customer）|
 | AI | Groq API（Llama 3.3 70B）|
-| リアルタイム通信 | WebSocket |
-| 認証 | JWT（役割：admin / maker / customer）|
 | PDF生成 | ReportLab + IPAex ゴシック |
 | デプロイ（フロント） | Vercel |
-| デプロイ（バック） | AWS EC2 (Ubuntu 22.04) + Nginx + Let's Encrypt |
+| デプロイ（バック） | AWS EC2 (Ubuntu 22.04) + Nginx + Let's Encrypt + Gunicorn |
 
 ---
 
@@ -64,15 +63,17 @@ pip install -r requirements.txt
 `.env` ファイルを作成：
 
 ```env
+SECRET_KEY=your_secret_key_here
 GROQ_API_KEY=your_groq_api_key_here
 ALLOWED_ORIGINS=http://localhost:3000
 ```
 
 ```bash
-uvicorn main:app --reload --port 8000
+python manage.py migrate
+python manage.py runserver 8000
 ```
 
-→ http://localhost:8000/docs（Swagger UI）
+→ http://localhost:8000/
 
 ### フロントエンド
 
@@ -126,7 +127,7 @@ npm run dev
 | `POST` | `/ai-interview` | AIヒアリング（Groq）|
 | `GET` | `/check-items` | 確認項目一覧（機器指定で絞り込み）|
 | `GET` | `/check-items/machines` | 機器名一覧 |
-| `WS` | `/ws/{user_id}` | WebSocket 通知 |
+| `GET` | `/messages/unread-summary` | 未読メッセージ一覧 |
 
 ---
 
@@ -172,6 +173,9 @@ pip install -r requirements.txt
 `.env` ファイルを作成：
 
 ```env
+SECRET_KEY=your_secret_key_here
+DEBUG=False
+ALLOWED_HOSTS=<1-2-3-4>.nip.io,127.0.0.1
 GROQ_API_KEY=your_groq_api_key_here
 ALLOWED_ORIGINS=https://your-vercel-app.vercel.app
 UPLOAD_DIR=/home/ubuntu/anomaly-report/backend/uploads
@@ -191,7 +195,7 @@ User=ubuntu
 WorkingDirectory=/home/ubuntu/anomaly-report/backend
 Environment="PATH=/home/ubuntu/anomaly-report/backend/venv/bin"
 EnvironmentFile=/home/ubuntu/anomaly-report/backend/.env
-ExecStart=/home/ubuntu/anomaly-report/backend/venv/bin/uvicorn main:app --host 127.0.0.1 --port 8000
+ExecStart=/home/ubuntu/anomaly-report/backend/venv/bin/gunicorn config.wsgi:application --bind 127.0.0.1:8000
 Restart=always
 RestartSec=3
 
@@ -241,9 +245,13 @@ sudo certbot --nginx -d <1-2-3-4>.nip.io
 #### コード更新時のデプロイ手順
 
 ```bash
-ssh -i ~/.ssh/anomaly-report.pem ubuntu@<EC2のIP>
+ssh ubuntu@<EC2のIP>
 cd anomaly-report
 git pull
+cd backend
+source venv/bin/activate
+pip install -r requirements.txt
+python manage.py migrate
 sudo systemctl restart anomaly
 ```
 
