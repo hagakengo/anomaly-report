@@ -1,3 +1,12 @@
+/**
+ * バックエンド API との通信を担う関数群。
+ *
+ * API_BASE の決め方：
+ *   - ローカル開発: 環境変数未設定 → "http://localhost:8000"
+ *   - 本番(Vercel): NEXT_PUBLIC_API_URL に Railway の URL を設定する
+ *   NEXT_PUBLIC_ プレフィックスが必要な理由: Next.js はこのプレフィックスがある
+ *   環境変数だけをブラウザに公開する（それ以外はサーバー専用）。
+ */
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
 export type Severity = "high" | "medium" | "low";
@@ -41,6 +50,13 @@ export interface Message {
   created_at: string;
 }
 
+/**
+ * sessionStorage から JWT トークンを取り出す。
+ * sessionStorage を使う理由: localStorage はタブを閉じても残るが
+ * sessionStorage はタブを閉じるとクリアされ、セキュリティが高い。
+ * typeof window チェックは SSR（サーバーサイドレンダリング）時に
+ * window が存在しないためのガード。
+ */
 function getToken(): string | null {
   if (typeof window === "undefined") return null;
   const raw = sessionStorage.getItem("auth_user");
@@ -52,6 +68,11 @@ function getToken(): string | null {
   }
 }
 
+/**
+ * すべての API リクエストに付与する認証ヘッダーを生成する。
+ * Bearer トークンは HTTP Authorization ヘッダーの標準的な形式。
+ * バックエンドの get_current_user() がこのトークンを検証する。
+ */
 function authHeaders(extra?: Record<string, string>): HeadersInit {
   const token = getToken();
   return {
@@ -60,6 +81,13 @@ function authHeaders(extra?: Record<string, string>): HeadersInit {
   };
 }
 
+/**
+ * 報告一覧を取得する。フィルタ条件はクエリパラメータとして URL に付与する。
+ * URLSearchParams ではなく new URL() を使うのは、
+ * ベース URL が http:// か https:// かを問わずに扱えるため。
+ * cache: "no-store" は Next.js の自動キャッシュを無効化する。
+ * 一覧は常に最新データを取得したいのでキャッシュを使わない。
+ */
 export async function getReports(filters: ReportFilters = {}): Promise<Report[]> {
   const url = new URL(`${API_BASE}/reports`);
   if (filters.machine_name) url.searchParams.set("machine_name", filters.machine_name);
@@ -90,10 +118,17 @@ export async function getReport(id: number): Promise<Report> {
   return res.json();
 }
 
+/**
+ * 報告を新規作成する。FormData を使う理由：
+ * JSON では画像・動画ファイルを本文に含められない。
+ * multipart/form-data（FormData）ならテキストとファイルを同時に送れる。
+ * Content-Type ヘッダーは fetch が自動で設定するため手動で指定しない
+ * （手動で設定すると boundary が欠けて送信エラーになる）。
+ */
 export async function createReport(formData: FormData): Promise<Report> {
   const res = await fetch(`${API_BASE}/reports`, {
     method: "POST",
-    headers: authHeaders(),
+    headers: authHeaders(),  // Content-Type は fetch が自動設定
     body: formData,
   });
   if (res.status === 401) throw new Error("UNAUTHORIZED");
@@ -114,7 +149,7 @@ export async function updateReport(id: number, formData: FormData): Promise<Repo
 
 export async function updateReportStatus(id: number, status: Status): Promise<Report> {
   const res = await fetch(`${API_BASE}/reports/${id}`, {
-    method: "PATCH",
+    method: "PATCH",  // 一部フィールドのみ更新するので PUT ではなく PATCH を使う
     headers: authHeaders({ "Content-Type": "application/json" }),
     body: JSON.stringify({ status }),
   });
@@ -132,6 +167,13 @@ export async function deleteReport(id: number): Promise<void> {
   if (!res.ok) throw new Error("削除に失敗しました");
 }
 
+/**
+ * PDF をダウンロードさせる。
+ * バックエンドからバイト列（blob）を受け取り、
+ * 一時 URL を生成してアンカークリックを模擬することで
+ * ブラウザのダウンロードダイアログを発生させる。
+ * URL.revokeObjectURL で一時 URL を解放してメモリリークを防ぐ。
+ */
 export async function downloadPdf(id: number): Promise<void> {
   const res = await fetch(`${API_BASE}/reports/${id}/pdf`, {
     headers: authHeaders(),
@@ -147,6 +189,12 @@ export async function downloadPdf(id: number): Promise<void> {
   URL.revokeObjectURL(url);
 }
 
+/**
+ * サーバーに保存されたファイルの公開 URL を返す。
+ * バックエンドは /files/<filename> でファイルを配信している（StaticFiles）。
+ * file_path はサーバーの絶対パスなので、ファイル名だけ取り出して URL を組み立てる。
+ * split(/[/\\]/) で Linux のスラッシュと Windows のバックスラッシュ両方に対応。
+ */
 export function getFileUrl(filePath: string): string {
   const filename = filePath.split(/[/\\]/).pop() ?? "";
   return `${API_BASE}/files/${filename}`;
@@ -296,10 +344,22 @@ export interface InterviewResponse {
 export interface CheckItem {
   id: number;
   content: string;
-  machine_name: string | null;
+  machine_name: string | null;  // null = 全機器共通
   order_index: number;
 }
 
+/**
+ * 確認項目を取得する。
+ * machine_name を指定すると「その機器の項目 + 共通項目（null）」が返る。
+ * 省略すると全項目が返る（設定画面用）。
+ *
+ * ?? null の正規化について：
+ * バックエンドが machine_name フィールドを JSON に含めない場合、
+ * JavaScript は undefined を返す。undefined === null は false のため、
+ * 「共通項目かどうか」の判定が壊れる。
+ * ?? null で undefined を null に変換することで、
+ * フロント側の == null（ゆるい等価）による判定を安全にしている。
+ */
 export async function getCheckItems(machine_name?: string): Promise<CheckItem[]> {
   const url = new URL(`${API_BASE}/check-items`);
   if (machine_name) url.searchParams.set("machine_name", machine_name);
@@ -346,6 +406,11 @@ export async function deleteCheckItem(id: number): Promise<void> {
   if (!res.ok) throw new Error("確認項目の削除に失敗しました");
 }
 
+/**
+ * content と machine_name の組み合わせが同じ重複項目を削除する。
+ * DELETE メソッドに JSON レスポンスを返すのは RESTful の厳密な定義からは外れるが、
+ * 「何件削除したか」をフロントに伝えるために使っている。
+ */
 export async function dedupCheckItems(): Promise<{ deleted: number }> {
   const res = await fetch(`${API_BASE}/check-items/dedup`, {
     method: "DELETE",
@@ -360,6 +425,10 @@ export interface InterviewSuggestions {
   locations: string[];
 }
 
+/**
+ * 過去の報告から使用頻度の高い機器名・場所を取得する。
+ * 選択ウィザードの場所フェーズで候補チップとして表示する。
+ */
 export async function getInterviewSuggestions(): Promise<InterviewSuggestions> {
   const res = await fetch(`${API_BASE}/ai-interview/suggestions`, {
     cache: "no-store",
@@ -369,6 +438,12 @@ export async function getInterviewSuggestions(): Promise<InterviewSuggestions> {
   return res.json();
 }
 
+/**
+ * Groq API（Llama 3.3 70B）への中継。
+ * 現在の選択ウィザードでは使っていないが、
+ * 将来の AI チャット復活や機能拡張に備えて残している。
+ * 503 はサーバー側で GROQ_API_KEY が未設定の場合に返る。
+ */
 export async function sendInterviewMessage(
   messages: InterviewMessage[],
   check_context?: string,
@@ -387,6 +462,10 @@ export async function sendInterviewMessage(
   return res.json();
 }
 
+/**
+ * API の URL（http://...）を WebSocket の URL（ws://...）に変換する。
+ * WS 接続は fetch と異なり、スキームを明示的に ws:// / wss:// にする必要がある。
+ */
 export function getWsBase(): string {
   return (process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000")
     .replace(/^http/, "ws");

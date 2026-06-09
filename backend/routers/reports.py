@@ -16,6 +16,8 @@ from ws_manager import manager
 
 router = APIRouter(prefix="/reports", tags=["reports"])
 
+# 許可するファイル拡張子。セキュリティ上、サーバー側で必ずバリデーションする。
+# フロントのバリデーションだけでは開発者ツールで簡単に回避できる。
 ALLOWED_EXTENSIONS = {
     "image": {".jpg", ".jpeg", ".png", ".gif", ".webp"},
     "video": {".mp4", ".mov", ".avi", ".webm"},
@@ -23,6 +25,10 @@ ALLOWED_EXTENSIONS = {
 
 
 def _save_upload(file: UploadFile) -> tuple[str, str]:
+    """アップロードファイルをサーバーのローカルストレージに保存する。
+    ファイル名は uuid4 で生成したランダム文字列にする。
+    元のファイル名をそのまま使うと、同名ファイルの上書きや
+    パストラバーサル攻撃（"../../../etc/passwd" など）のリスクがある。"""
     ext = os.path.splitext(file.filename or "")[1].lower()
     file_type: Optional[str] = None
     for ftype, exts in ALLOWED_EXTENSIONS.items():
@@ -38,17 +44,19 @@ def _save_upload(file: UploadFile) -> tuple[str, str]:
     return dest, file_type
 
 
-# --- 統計 (固定パスは {report_id} より先に定義) ---
+# ⚠ 固定パス（/stats）は パラメータパス（/{report_id}）より先に定義する必要がある。
+# FastAPI はルートを上から順にマッチングするため、/{report_id} を先に書くと
+# GET /reports/stats が report_id="stats" として処理されてしまう。
 @router.get("/stats", response_model=StatsOut)
 def get_stats(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    """統計データを返す。customer は自分の報告だけ、admin/maker は全件が対象。"""
     uid = current_user.id if current_user.role == "customer" else None
     return crud.get_stats(db, user_id=uid)
 
 
-# --- 一覧取得 ---
 @router.get("", response_model=list[ReportOut])
 def list_reports(
     machine_name: Optional[str] = None,
@@ -63,6 +71,10 @@ def list_reports(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    """フィルタ・ソート付き報告一覧。
+    customer は自分の報告のみ（user_id を自動でセット）。
+    admin / maker はすべての報告を取得できる（uid=None で全件）。
+    company_name フィルタはメーカーが顧客別に絞り込む際に使う。"""
     uid = None if current_user.role in ("admin", "maker") else current_user.id
     return crud.get_reports(
         db,
@@ -77,6 +89,9 @@ async def _broadcast_new_report(
     report_id: int, machine_name: str, location: str,
     severity: str, reported_at: str, recurrence_count: int,
 ):
+    """WebSocket で接続中の全クライアント（管理者・メーカー）に新規報告を通知する。
+    非同期関数として定義し、BackgroundTasks で呼ぶことで
+    レスポンスを返した後にブロードキャストが実行される（UX 改善）。"""
     await manager.broadcast({
         "type": "new_report",
         "report": {
@@ -90,7 +105,6 @@ async def _broadcast_new_report(
     })
 
 
-# --- 新規登録 (customer のみ) ---
 @router.post("", response_model=ReportOut, status_code=201)
 def create_report(
     background_tasks: BackgroundTasks,
@@ -98,10 +112,19 @@ def create_report(
     location: str = Form(...),
     description: str = Form(...),
     severity: str = Form("medium"),
-    file: Optional[UploadFile] = File(None),
+    file: Optional[UploadFile] = File(None),  # ファイルは任意（None OK）
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    """新規報告を登録する（customer ロールのみ）。
+
+    FormData を使う理由：JSON ではファイルを同時に送れない。
+    multipart/form-data なら テキスト + ファイルを1リクエストで送れる。
+
+    BackgroundTasks：
+    - WebSocket ブロードキャストはレスポンス後に実行（非同期・ノンブロッキング）
+    - severity=high のメール通知も同様（メール送信に数秒かかるため）
+    """
     if current_user.role != "customer":
         raise HTTPException(status_code=403, detail="報告の作成はユーザーのみ可能です")
     file_path: Optional[str] = None
@@ -129,7 +152,6 @@ def create_report(
     return report
 
 
-# --- 単一取得 ---
 @router.get("/{report_id}", response_model=ReportOut)
 def get_report(
     report_id: int,
@@ -143,7 +165,6 @@ def get_report(
     return report
 
 
-# --- 報告内容編集 ---
 @router.put("/{report_id}", response_model=ReportOut)
 def update_report(
     report_id: int,
@@ -155,6 +176,7 @@ def update_report(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    """報告内容を編集する。作成者のみ編集可能（assert_report_owner でチェック）。"""
     report = crud.get_report(db, report_id)
     if not report:
         raise HTTPException(status_code=404, detail="報告が見つかりません")
@@ -172,14 +194,16 @@ def update_report(
     )
 
 
-# --- ステータス更新 (staff: admin / maker) ---
 @router.patch("/{report_id}", response_model=ReportOut)
 def update_status(
     report_id: int,
     data: ReportUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_staff),
+    current_user: User = Depends(require_staff),  # admin / maker のみ
 ):
+    """ステータスを変更する（open → in_progress → resolved など）。
+    PATCH を使う理由：PUT は全フィールドの更新、PATCH は一部フィールドの更新。
+    ステータスだけを変えたいので PATCH が適切。"""
     report = crud.get_report(db, report_id)
     if not report:
         raise HTTPException(status_code=404, detail="報告が見つかりません")
@@ -187,7 +211,6 @@ def update_status(
     return updated
 
 
-# --- 担当者アサイン (staff: admin / maker) ---
 @router.patch("/{report_id}/assign", response_model=ReportOut)
 def assign_report(
     report_id: int,
@@ -195,6 +218,9 @@ def assign_report(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_staff),
 ):
+    """担当者をアサインする。assignee_id=null でアサイン解除。
+    アサイン時に assignee_name も確認・記録することで、
+    一覧画面で担当者名を表示するたびに JOIN する必要をなくしている。"""
     assignee_name: Optional[str] = None
     if data.assignee_id is not None:
         assignee = db.query(User).filter(User.id == data.assignee_id).first()
@@ -207,13 +233,13 @@ def assign_report(
     return report
 
 
-# --- ステータス変更ログ ---
 @router.get("/{report_id}/status-logs", response_model=list[StatusLogOut])
 def get_status_logs(
     report_id: int,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    """ステータス変更の履歴を返す。報告詳細画面のタイムラインに表示する。"""
     report = crud.get_report(db, report_id)
     if not report:
         raise HTTPException(status_code=404, detail="報告が見つかりません")
@@ -221,13 +247,14 @@ def get_status_logs(
     return crud.get_status_logs(db, report_id)
 
 
-# --- 再発件数 ---
 @router.get("/{report_id}/recurrence")
 def get_recurrence(
     report_id: int,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    """同じ機器の直近30日以内の報告件数を返す。
+    2件以上なら「再発アラート」バッジを表示するためにフロントが使う。"""
     report = crud.get_report(db, report_id)
     if not report:
         raise HTTPException(status_code=404, detail="報告が見つかりません")
@@ -235,24 +262,26 @@ def get_recurrence(
     return {"count": count, "machine_name": report.machine_name}
 
 
-# --- 削除 (staff: admin / maker) ---
 @router.delete("/{report_id}", status_code=204)
 def delete_report(
     report_id: int,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_staff),
 ):
+    """報告を削除する（admin / maker のみ）。204 = 成功・レスポンスボディなし。"""
     if not crud.delete_report(db, report_id):
         raise HTTPException(status_code=404, detail="報告が見つかりません")
 
 
-# --- PDF出力 ---
 @router.get("/{report_id}/pdf")
 def download_pdf(
     report_id: int,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    """報告書を PDF で生成してダウンロードさせる。
+    Content-Disposition: attachment でブラウザにダウンロードダイアログを出させる。
+    PDF 生成には ReportLab + IPAex ゴシック（日本語対応フォント）を使う。"""
     report = crud.get_report(db, report_id)
     if not report:
         raise HTTPException(status_code=404, detail="報告が見つかりません")

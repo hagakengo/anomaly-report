@@ -1,3 +1,18 @@
+/**
+ * 選択式ウィザードによる異常報告作成ページ。
+ *
+ * 設計思想：
+ * 元々は Groq API（LLM チャット）で自由入力のヒアリングをしていたが、
+ * 「入力が面倒」「何を入力すればいいか分からない」という UX 課題があった。
+ * そのため「AI は選択肢でヒアリングする」方針に変更。
+ * ステップ形式にすることで入力漏れを防ぎ、1画面1質問で迷わせない。
+ *
+ * ステップの流れ:
+ *   機器選択 → 事前確認（チェック項目がある場合のみ） → 場所選択 → 症状選択 → 詳細入力 → 重要度選択 → 完了
+ *
+ * phase ステートで現在のステップを管理し、条件分岐でUIを切り替えている。
+ * React でウィザードUIを実装する一般的なパターン。
+ */
 "use client";
 
 import { useState, useEffect } from "react";
@@ -12,6 +27,8 @@ import {
   CheckItem,
 } from "../../lib/api";
 
+// 製造現場でよくある異常の症状リスト。
+// 複数選択可能にすることで「異音かつ過熱」などの複合症状を表現できる。
 const SYMPTOM_OPTIONS = [
   "動作停止",
   "動作不良・誤作動",
@@ -23,47 +40,54 @@ const SYMPTOM_OPTIONS = [
   "その他",
 ];
 
+// 重要度の選択肢。色付きボタンで視覚的に緊急度を伝える。
 const SEVERITY_OPTIONS = [
   { value: "high",   label: "高",   sub: "即時対応が必要",   color: "bg-red-500 border-red-500 text-white" },
   { value: "medium", label: "中",   sub: "早期対応が必要",   color: "bg-amber-400 border-amber-400 text-white" },
   { value: "low",    label: "低",   sub: "経過観察で可",     color: "bg-emerald-500 border-emerald-500 text-white" },
 ];
 
+// ウィザードの各ステップを型で定義する。
+// TypeScript の Union Type を使うことで、不正な phase 値をコンパイル時に検出できる。
 type Phase = "machine_select" | "pre_check" | "location" | "symptom" | "detail" | "severity";
 
 export default function AiInterviewPage() {
   const router = useRouter();
   const { user, logout } = useAuth();
 
+  // 現在のウィザードステップ
   const [phase, setPhase] = useState<Phase>("machine_select");
 
-  // 機器選択
-  const [machines, setMachines] = useState<string[]>([]);
-  const [selectedMachine, setSelectedMachine] = useState("");
-  const [customMachine, setCustomMachine] = useState("");
+  // ステップ1: 機器選択
+  const [machines, setMachines] = useState<string[]>([]);       // 過去の報告から取得した機器名リスト
+  const [selectedMachine, setSelectedMachine] = useState("");   // 選択済み機器名
+  const [customMachine, setCustomMachine] = useState("");        // 手入力の機器名
 
-  // 事前確認
-  const [checkItems, setCheckItems] = useState<CheckItem[]>([]);
-  const [checkResults, setCheckResults] = useState<Record<number, string>>({});
-  const [checkSummary, setCheckSummary] = useState("");
+  // ステップ2: 事前確認（メーカー定義のチェックリスト）
+  const [checkItems, setCheckItems] = useState<CheckItem[]>([]);            // チェック項目リスト
+  const [checkResults, setCheckResults] = useState<Record<number, string>>({}); // 各項目の回答 { id: "問題なし"|"要確認"|"異常あり" }
+  const [checkSummary, setCheckSummary] = useState("");          // 報告書に含める確認結果の文字列
 
-  // ヒアリング収集データ
-  const [location, setLocation] = useState("");
-  const [customLocation, setCustomLocation] = useState("");
-  const [symptoms, setSymptoms] = useState<string[]>([]);
-  const [detail, setDetail] = useState("");
-  const [severity, setSeverity] = useState("");
+  // ステップ3〜5: ヒアリング収集データ
+  const [location, setLocation] = useState("");         // 選択した場所
+  const [customLocation, setCustomLocation] = useState(""); // 手入力の場所
+  const [symptoms, setSymptoms] = useState<string[]>([]);  // 選択した症状（複数可）
+  const [detail, setDetail] = useState("");              // 補足詳細（任意）
+  const [severity, setSeverity] = useState("");          // 重要度
 
-  // 提案
+  // バックエンドから取得した機器名・場所のサジェスト（過去の報告から抽出）
   const [suggestions, setSuggestions] = useState<InterviewSuggestions>({ machine_names: [], locations: [] });
 
   const [submitting, setSubmitting] = useState(false);
+  // 報告書作成成功時に完了画面を表示するためのデータ
   const [createdReport, setCreatedReport] = useState<{ id: number; machine_name: string; severity: string } | null>(null);
 
+  // 未ログインなら即リダイレクト
   useEffect(() => {
     if (!user) router.push("/login");
   }, [user, router]);
 
+  // 初回マウント時にサジェストと機器名リストを取得する
   useEffect(() => {
     getInterviewSuggestions().then(setSuggestions).catch(() => {});
     getCheckItemMachines().then(setMachines).catch(() => {});
@@ -71,16 +95,21 @@ export default function AiInterviewPage() {
 
   // ─── 機器選択完了 ──────────────────────────────────────────────────
   const handleMachineSelect = async () => {
+    // カスタム入力を優先（customMachine があればそちらを使う）
     const machine = customMachine.trim() || selectedMachine;
     if (!machine) return;
+    // 選んだ機器のチェック項目を取得（機器固有 + 共通の両方が返る）
     const items = await getCheckItems(machine).catch(() => []);
     setCheckItems(items);
     setSelectedMachine(machine);
+    // チェック項目が1件でもあれば事前確認フェーズへ、なければスキップして場所へ
     setPhase(items.length > 0 ? "pre_check" : "location");
   };
 
   // ─── 事前確認完了 ──────────────────────────────────────────────────
   const handlePreCheckComplete = () => {
+    // 各チェック項目の回答を「・項目名：回答」の形式でまとめる
+    // これを報告書の description に含めることで、メーカーが確認状況を把握できる
     const summary = checkItems
       .map((item) => `・${item.content}：${checkResults[item.id] ?? "未確認"}`)
       .join("\n");
@@ -89,6 +118,7 @@ export default function AiInterviewPage() {
   };
 
   // ─── 症状トグル ────────────────────────────────────────────────────
+  // 既に選択済みなら除去（トグル）、未選択なら追加する
   const toggleSymptom = (s: string) =>
     setSymptoms((prev) => prev.includes(s) ? prev.filter((x) => x !== s) : [...prev, s]);
 
@@ -98,6 +128,10 @@ export default function AiInterviewPage() {
     if (!loc || symptoms.length === 0 || !severity) return;
     setSubmitting(true);
     try {
+      // description（異常内容）を構造化テキストとして組み立てる。
+      // 【症状】【詳細】【事前確認】のブロックに分けることで
+      // メーカーが素早く状況を把握できるフォーマットにしている。
+      // filter(Boolean) で空文字列のブロックを除去してから join する。
       const lines = [
         `【症状】${symptoms.join("・")}`,
         detail.trim() ? `【詳細】${detail.trim()}` : "",
@@ -112,6 +146,7 @@ export default function AiInterviewPage() {
       const report = await createReport(fd);
       setCreatedReport({ id: report.id, machine_name: report.machine_name, severity: report.severity });
     } catch (err) {
+      // 認証エラーは強制ログアウト
       if (err instanceof Error && err.message === "UNAUTHORIZED") {
         logout();
         router.push("/login");
@@ -119,6 +154,12 @@ export default function AiInterviewPage() {
     } finally { setSubmitting(false); }
   };
 
+  /**
+   * 各ステップ共通のヘッダーコンポーネント（関数として定義）。
+   * React コンポーネントとして別ファイルに切り出してもよいが、
+   * このページ内でしか使わないため関数として定義している。
+   * onBack は各ステップの「戻る」動作が異なるため引数で受け取る。
+   */
   const header = (title: string, sub: string, onBack: () => void) => (
     <header className="bg-white border-b border-gray-200 shadow-sm">
       <div className="max-w-xl mx-auto px-4 py-4 flex items-center gap-3">
@@ -127,6 +168,7 @@ export default function AiInterviewPage() {
           <h1 className="text-base font-bold text-gray-900">{title}</h1>
           <p className="text-xs text-gray-400">{sub}</p>
         </div>
+        {/* 手動入力へのリンク。router.push を使うのは、<a href> だとページ全体がリロードされてしまうため。 */}
         <button onClick={() => router.push("/reports/new/manual")} className="text-xs text-gray-400 hover:text-gray-600 underline shrink-0">手動入力</button>
       </div>
     </header>
@@ -153,11 +195,13 @@ export default function AiInterviewPage() {
 
   // ─── 機器選択 ──────────────────────────────────────────────────────
   if (phase === "machine_select") {
+    // チップ選択 or テキスト入力の両方を受け付け、どちらかが入力されていれば有効とする
     const effective = customMachine.trim() || selectedMachine;
     return (
       <div className="min-h-screen bg-gray-50 flex flex-col">
         {header("機器を選択", "異常が発生した機器を選んでください", () => router.push("/"))}
         <main className="flex-1 max-w-xl mx-auto w-full px-4 py-8 space-y-5">
+          {/* 過去の報告から取得した機器名をチップで表示 */}
           {machines.length > 0 && (
             <div className="bg-white rounded-xl border border-gray-200 p-4 space-y-3">
               <p className="text-sm font-semibold text-gray-700">過去の機器から選ぶ</p>
@@ -190,6 +234,7 @@ export default function AiInterviewPage() {
 
   // ─── 事前確認 ──────────────────────────────────────────────────────
   if (phase === "pre_check") {
+    // 全項目に回答済みかチェック
     const allAnswered = checkItems.every((item) => checkResults[item.id]);
     return (
       <div className="min-h-screen bg-gray-50 flex flex-col">
@@ -199,6 +244,7 @@ export default function AiInterviewPage() {
             <div key={item.id} className="bg-white rounded-xl border border-gray-200 p-4 space-y-2">
               <div className="flex items-start gap-2">
                 <p className="text-sm font-semibold text-gray-800 flex-1">{item.content}</p>
+                {/* machine_name == null（ゆるい等価）で undefined も null も「共通」と判定 */}
                 {item.machine_name == null && <span className="text-xs text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full shrink-0">共通</span>}
               </div>
               <div className="flex gap-2">
@@ -229,6 +275,7 @@ export default function AiInterviewPage() {
     const effective = customLocation.trim() || location;
     return (
       <div className="min-h-screen bg-gray-50 flex flex-col">
+        {/* 戻り先はチェック項目の有無によって変わる */}
         {header(`場所を選択 — ${selectedMachine}`, "異常が発生した場所を選んでください", () => setPhase(checkItems.length > 0 ? "pre_check" : "machine_select"))}
         <main className="flex-1 max-w-xl mx-auto w-full px-4 py-8 space-y-5">
           {suggestions.locations.length > 0 && (
@@ -286,7 +333,7 @@ export default function AiInterviewPage() {
     );
   }
 
-  // ─── 詳細入力 ──────────────────────────────────────────────────────
+  // ─── 詳細入力（任意） ──────────────────────────────────────────────
   if (phase === "detail") {
     return (
       <div className="min-h-screen bg-gray-50 flex flex-col">
@@ -308,13 +355,15 @@ export default function AiInterviewPage() {
     );
   }
 
-  // ─── 重要度選択 ────────────────────────────────────────────────────
+  // ─── 重要度選択（最終ステップ） ────────────────────────────────────
+  // 送信前に全入力内容を確認サマリーとして表示する。
+  // ユーザーが内容を確認・訂正できる最後のチェックポイント。
   const loc = customLocation.trim() || location;
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
       {header(`重要度を選択 — ${selectedMachine}`, "この異常の緊急度を選んでください", () => setPhase("detail"))}
       <main className="flex-1 max-w-xl mx-auto w-full px-4 py-8 space-y-5">
-        {/* 確認サマリー */}
+        {/* 送信前のサマリー確認 */}
         <div className="bg-white rounded-xl border border-gray-200 p-4 space-y-2 text-sm">
           <p className="font-semibold text-gray-700 text-xs uppercase tracking-wide text-slate-400">入力内容の確認</p>
           <div className="space-y-1">

@@ -1,3 +1,17 @@
+/**
+ * 事前確認項目の設定ページ（admin / maker 専用）。
+ *
+ * 設計のポイント：
+ * - 確認項目は「全機器共通（machine_name=null）」と「機器固有」の2種類がある
+ * - 機器グループを左サイドバーで選択し、右ペインに項目を表示する2カラムレイアウト
+ * - 機器グループビューでは「機器固有の項目 + 共通項目」を合わせて表示する
+ *   （共通項目は「共通」バッジを付けて識別し、このビューでは編集不可にする）
+ *
+ * null / undefined の扱いについて：
+ * バックエンドが machine_name の値が null の場合 JSON キー自体を省略することがある。
+ * TypeScript では省略されたキーは undefined になるため、
+ * 「== null」（ゆるい等価、undefined も null も true）を使って判定している。
+ */
 "use client";
 
 import { useState, useEffect } from "react";
@@ -8,6 +22,8 @@ import {
   CheckItem,
 } from "../lib/api";
 
+// 「全機器共通」グループを識別するための内部キー。
+// DB の machine_name=null と混在させないよう、専用の文字列定数を使う。
 const COMMON_KEY = "__common__";
 
 export default function SettingsPage() {
@@ -19,50 +35,67 @@ export default function SettingsPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
-  // 選択中の機器グループ
+  // 左サイドバーで選択中の機器グループ
   const [selectedGroup, setSelectedGroup] = useState<string>(COMMON_KEY);
 
-  // 新規機器グループ追加
+  // 新規機器グループ追加用の入力値
   const [newGroupName, setNewGroupName] = useState("");
 
-  // 項目追加
+  // 項目追加用の入力値と、他グループからのコピー元 ID
   const [newItemText, setNewItemText] = useState("");
   const [copySourceId, setCopySourceId] = useState<number | "">("");
 
-  // 項目編集
+  // インライン編集用のステート
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editingText, setEditingText] = useState("");
 
   useEffect(() => {
     if (!user) { router.push("/login"); return; }
-    if (!isStaff) { router.push("/"); return; }
+    if (!isStaff) { router.push("/"); return; }  // customer は設定画面にアクセス不可
+    // machine_name 指定なし（全件取得）でフロント側でグループ分けする
     getCheckItems().then(setItems).finally(() => setLoading(false));
   }, [user, router, isStaff]);
 
   if (loading) return null;
 
-  // グループ一覧（共通 + 機器別）
+  // 機器グループ一覧を items から動的に生成する（Set で重複排除）
   const machineGroups = Array.from(
     new Set(items.filter((i) => i.machine_name).map((i) => i.machine_name as string))
   ).sort();
   const groups = [COMMON_KEY, ...machineGroups];
 
+  // 選択中グループの DB 上の machine_name 値（共通なら null）
   const currentMachine = selectedGroup === COMMON_KEY ? null : selectedGroup;
 
-  // null/undefined どちらも「共通」として扱う
+  /**
+   * 「共通項目かどうか」を判定するヘルパー関数。
+   * == null（ゆるい等価）を使うことで undefined と null の両方に対応している。
+   * === null（厳密等価）だと、バックエンドがキーを省略した場合の undefined を見逃す。
+   */
   const isCommon = (i: CheckItem) => i.machine_name == null;
 
-  // 機器グループでは「機器固有 + 共通」を両方表示
+  /**
+   * 右ペインに表示する項目リスト。
+   * - 共通グループを選択中：共通項目（null）だけ表示
+   * - 機器グループを選択中：その機器の固有項目 + 共通項目を両方表示
+   */
   const visibleItems = selectedGroup === COMMON_KEY
     ? items.filter((i) => isCommon(i))
     : items.filter((i) => i.machine_name === selectedGroup || isCommon(i));
 
-  // 機器固有項目のみのカウント（order_index 計算用）
+  /**
+   * 機器固有項目だけのカウント。
+   * 新規追加時の order_index（表示順）計算と、ヘッダーの「固有X件 + 共通Y件」表示に使う。
+   * visibleItems.length だと共通も含まれてしまうため別途計算している。
+   */
   const ownItemCount = selectedGroup === COMMON_KEY
     ? visibleItems.length
     : items.filter((i) => i.machine_name === selectedGroup).length;
 
-  // 使い回し用：他の機器グループの項目のみ（共通・今の機器は除く）
+  /**
+   * 「他グループからコピー」ドロップダウンに表示する項目。
+   * 現在の機器の項目と共通項目は除外する（コピーしても意味がないため）。
+   */
   const otherItems = selectedGroup === COMMON_KEY
     ? items.filter((i) => !isCommon(i))
     : items.filter((i) => !isCommon(i) && i.machine_name !== selectedGroup);
@@ -71,10 +104,12 @@ export default function SettingsPage() {
     const name = newGroupName.trim();
     if (!name || machineGroups.includes(name)) return;
     setNewGroupName("");
+    // 新しいグループを選択状態にする（DB には保存しない。最初の項目追加時に作られる）
     setSelectedGroup(name);
   };
 
   const handleAddItem = async () => {
+    // コピー元が選ばれている場合はそちらの content を使い、テキスト入力は無視
     const text = copySourceId
       ? items.find((i) => i.id === Number(copySourceId))?.content ?? newItemText.trim()
       : newItemText.trim();
@@ -82,6 +117,8 @@ export default function SettingsPage() {
     setSaving(true);
     try {
       await createCheckItem(text, ownItemCount, currentMachine ?? undefined);
+      // ローカルステートに追加するだけでは「共通項目」の表示に不整合が起きる。
+      // 追加後に全件再フェッチすることで確実に最新状態を反映させる。
       const allItems = await getCheckItems();
       setItems(allItems);
       setNewItemText("");
@@ -95,6 +132,7 @@ export default function SettingsPage() {
     try {
       const orig = items.find((i) => i.id === id)!;
       const updated = await updateCheckItem(id, editingText.trim(), orig.order_index, orig.machine_name ?? undefined);
+      // 更新は1件だけなのでローカルステートを直接書き換える（全件再フェッチより軽い）
       setItems((prev) => prev.map((i) => (i.id === id ? updated : i)));
       setEditingId(null);
     } finally { setSaving(false); }
@@ -110,6 +148,7 @@ export default function SettingsPage() {
     setSaving(true);
     try {
       const { deleted } = await dedupCheckItems();
+      // 削除後は再フェッチで最新状態を取得する
       const allItems = await getCheckItems();
       setItems(allItems);
       if (deleted > 0) alert(`重複 ${deleted} 件を削除しました`);
@@ -120,10 +159,11 @@ export default function SettingsPage() {
     if (!confirm(`「${groupName}」グループと、その確認項目をすべて削除しますか？`)) return;
     setSaving(true);
     try {
+      // そのグループの全項目を並行削除（Promise.all で同時リクエスト）
       const targets = items.filter((i) => i.machine_name === groupName);
       await Promise.all(targets.map((i) => deleteCheckItem(i.id)));
       setItems((prev) => prev.filter((i) => i.machine_name !== groupName));
-      setSelectedGroup(COMMON_KEY);
+      setSelectedGroup(COMMON_KEY);  // 共通グループに戻る
     } finally { setSaving(false); }
   };
 
@@ -140,6 +180,7 @@ export default function SettingsPage() {
             <h1 className="text-base font-bold text-slate-900">事前確認項目の設定</h1>
             <p className="text-xs text-slate-400">機器ごとに報告前チェック項目を管理します</p>
           </div>
+          {/* 重複削除ボタン: content + machine_name が同じ項目をバックエンドで一括削除 */}
           <button
             onClick={handleDedup}
             disabled={saving}
@@ -151,11 +192,12 @@ export default function SettingsPage() {
       </header>
 
       <main className="max-w-3xl mx-auto px-4 py-6 flex gap-5">
-        {/* 左：グループ一覧 */}
+        {/* 左：機器グループ一覧サイドバー */}
         <div className="w-52 shrink-0 space-y-2">
           <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide px-1">機器グループ</p>
           <ul className="space-y-1">
             {groups.map((g) => {
+              // そのグループに属する項目件数をカウントしてバッジ表示する
               const count = items.filter((i) =>
                 g === COMMON_KEY ? isCommon(i) : i.machine_name === g
               ).length;
@@ -175,6 +217,7 @@ export default function SettingsPage() {
                         {count}件
                       </span>
                     </button>
+                    {/* 共通グループは削除不可（ボタンを表示しない） */}
                     {g !== COMMON_KEY && (
                       <button
                         onClick={() => handleDeleteGroup(g)}
@@ -192,7 +235,7 @@ export default function SettingsPage() {
             })}
           </ul>
 
-          {/* 新規機器グループ */}
+          {/* 新規機器グループ追加フォーム */}
           <div className="pt-2 border-t border-slate-200 space-y-1.5">
             <p className="text-xs text-slate-400 px-1">機器を追加</p>
             <input
@@ -213,13 +256,14 @@ export default function SettingsPage() {
           </div>
         </div>
 
-        {/* 右：選択グループの項目 */}
+        {/* 右：選択グループの確認項目リスト + 追加フォーム */}
         <div className="flex-1 space-y-4">
           <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
             <div className="px-4 py-3 border-b border-slate-100 flex items-center gap-2">
               <h2 className="text-sm font-semibold text-slate-700">
                 {selectedGroup === COMMON_KEY ? "全機器共通の確認項目" : `${selectedGroup} の確認項目`}
               </h2>
+              {/* 機器グループ選択中は「固有N件 + 共通M件」の内訳を表示 */}
               {selectedGroup === COMMON_KEY ? (
                 <span className="text-xs text-slate-400">({visibleItems.length}件)</span>
               ) : (
@@ -236,6 +280,7 @@ export default function SettingsPage() {
             ) : (
               <ul className="divide-y divide-slate-50">
                 {visibleItems.map((item, idx) => (
+                  // 機器グループビューで共通項目は薄いグレー背景で視覚的に区別する
                   <li key={item.id} className={`flex items-center gap-3 px-4 py-3 ${item.machine_name === null && selectedGroup !== COMMON_KEY ? "bg-slate-50" : ""}`}>
                     <span className="text-xs text-slate-300 font-mono w-5 shrink-0">{idx + 1}</span>
                     {editingId === item.id ? (
@@ -245,14 +290,15 @@ export default function SettingsPage() {
                         onChange={(e) => setEditingText(e.target.value)}
                         onKeyDown={(e) => {
                           if (e.key === "Enter") handleUpdate(item.id);
-                          if (e.key === "Escape") setEditingId(null);
+                          if (e.key === "Escape") setEditingId(null);  // Esc でキャンセル
                         }}
                         className="flex-1 border border-indigo-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
                       />
                     ) : (
                       <span className="flex-1 text-sm text-slate-700">{item.content}</span>
                     )}
-                    {/* 機器グループビューで共通項目はバッジのみ、編集不可 */}
+                    {/* 機器グループビューで共通項目は「共通」バッジを表示するだけ（編集不可）。
+                        共通項目の編集は「全機器共通」グループで行う設計。 */}
                     {isCommon(item) && selectedGroup !== COMMON_KEY ? (
                       <span className="text-xs text-slate-400 bg-slate-200 px-2 py-1 rounded-full shrink-0">共通</span>
                     ) : (
@@ -276,11 +322,11 @@ export default function SettingsPage() {
             )}
           </div>
 
-          {/* 項目追加 */}
+          {/* 項目追加フォーム */}
           <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4 space-y-3">
             <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">確認項目を追加</p>
 
-            {/* 使い回し */}
+            {/* 他グループからコピー機能：ドロップダウンで選ぶと入力欄に内容が自動補完される */}
             {otherItems.length > 0 && (
               <div>
                 <label className="block text-xs text-slate-400 mb-1">他グループからコピー（任意）</label>
@@ -290,7 +336,7 @@ export default function SettingsPage() {
                     setCopySourceId(e.target.value ? Number(e.target.value) : "");
                     if (e.target.value) {
                       const src = items.find((i) => i.id === Number(e.target.value));
-                      if (src) setNewItemText(src.content);
+                      if (src) setNewItemText(src.content);  // テキスト入力に内容を反映
                     }
                   }}
                   className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-slate-50"
