@@ -39,7 +39,7 @@
 | 認証 | JWT（役割：admin / maker / customer）|
 | PDF生成 | ReportLab + IPAex ゴシック |
 | デプロイ（フロント） | Vercel |
-| デプロイ（バック） | Railway + Volume |
+| デプロイ（バック） | AWS EC2 (Ubuntu 22.04) + Nginx + Let's Encrypt |
 
 ---
 
@@ -132,23 +132,142 @@ npm run dev
 
 ## デプロイ
 
-### Railway（バックエンド）
+### AWS EC2（バックエンド）
 
-1. Railway でプロジェクト作成 → `backend/` を指定
-2. Volume を追加（マウントパス: `/uploads`）
+#### 構成
+- Ubuntu 22.04 LTS / t2.micro（無料枠）
+- Nginx でリバースプロキシ
+- Let's Encrypt（nip.io）で HTTPS 化
+- systemd でプロセス常駐化
+
+#### セットアップ手順
+
+**1. EC2 起動**
+
+AWS コンソールで以下のセキュリティグループを設定：
+
+| ポート | 用途 | ソース |
+|---|---|---|
+| 22 | SSH | 自分のIP |
+| 80 | HTTP（Certbot認証用） | 0.0.0.0/0 |
+| 443 | HTTPS | 0.0.0.0/0 |
+
+**2. サーバーセットアップ**
+
+```bash
+sudo apt update && sudo apt upgrade -y
+sudo apt install -y python3-pip python3-venv nginx certbot python3-certbot-nginx git
+```
+
+**3. デプロイ**
+
+```bash
+git clone git@github.com:hagakengo/anomaly-report.git
+cd anomaly-report/backend
+python3 -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+```
+
+`.env` ファイルを作成：
+
+```env
+GROQ_API_KEY=your_groq_api_key_here
+ALLOWED_ORIGINS=https://your-vercel-app.vercel.app
+UPLOAD_DIR=/home/ubuntu/anomaly-report/backend/uploads
+```
+
+**4. systemd で常駐化**
+
+`/etc/systemd/system/anomaly.service` を作成：
+
+```ini
+[Unit]
+Description=Anomaly Report Backend
+After=network.target
+
+[Service]
+User=ubuntu
+WorkingDirectory=/home/ubuntu/anomaly-report/backend
+Environment="PATH=/home/ubuntu/anomaly-report/backend/venv/bin"
+EnvironmentFile=/home/ubuntu/anomaly-report/backend/.env
+ExecStart=/home/ubuntu/anomaly-report/backend/venv/bin/uvicorn main:app --host 127.0.0.1 --port 8000
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
+```
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable anomaly
+sudo systemctl start anomaly
+```
+
+**5. Nginx 設定**
+
+`/etc/nginx/sites-available/anomaly` を作成：
+
+```nginx
+server {
+    listen 80;
+    server_name <1-2-3-4>.nip.io;
+
+    location / {
+        proxy_pass http://127.0.0.1:8000;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        client_max_body_size 50M;
+    }
+}
+```
+
+```bash
+sudo ln -s /etc/nginx/sites-available/anomaly /etc/nginx/sites-enabled/
+sudo rm /etc/nginx/sites-enabled/default
+sudo systemctl reload nginx
+```
+
+**6. HTTPS 化**
+
+ドメインなしの場合は nip.io を使用（IPの`.`を`-`に変換）：
+
+```bash
+sudo certbot --nginx -d <1-2-3-4>.nip.io
+```
+
+#### コード更新時のデプロイ手順
+
+```bash
+ssh -i ~/.ssh/anomaly-report.pem ubuntu@<EC2のIP>
+cd anomaly-report
+git pull
+sudo systemctl restart anomaly
+```
+
+#### よく使うコマンド
+
+```bash
+# ログ確認
+sudo journalctl -u anomaly -f
+
+# サービス再起動
+sudo systemctl restart anomaly
+
+# Nginx 再起動
+sudo systemctl reload nginx
+```
+
+---
+
+### Vercel（フロントエンド）
+
+1. Vercel でプロジェクト作成
+2. Build & Deployment Settings → Root Directory を `frontend` に設定
 3. 環境変数を設定：
 
 | 変数名 | 値 |
 |---|---|
-| `GROQ_API_KEY` | Groq API キー |
-| `ALLOWED_ORIGINS` | フロントエンドの URL |
-| `UPLOAD_DIR` | `/uploads` |
-
-### Vercel（フロントエンド）
-
-1. Vercel でプロジェクト作成 → `frontend/` を Root Directory に指定
-2. 環境変数を設定：
-
-| 変数名 | 値 |
-|---|---|
-| `NEXT_PUBLIC_API_URL` | Railway の URL |
+| `NEXT_PUBLIC_API_URL` | EC2 の HTTPS URL |
