@@ -573,7 +573,7 @@ export default function ReportList() {
                     )}
                     <th className="px-4 py-3 text-left text-xs font-semibold text-slate-400 uppercase tracking-wider">場所</th>
                     <th
-                      className="px-4 py-3 text-left text-xs font-semibold text-slate-400 uppercase tracking-wider w-20 cursor-pointer select-none group/th"
+                      className="px-4 py-3 text-left text-xs font-semibold text-slate-400 uppercase tracking-wider w-28 whitespace-nowrap cursor-pointer select-none group/th"
                       onClick={() => handleColumnSort("severity")}
                     >
                       <span className="flex items-center gap-1">
