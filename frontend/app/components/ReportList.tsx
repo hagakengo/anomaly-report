@@ -239,11 +239,16 @@ export default function ReportList() {
     status: filterInput.status || undefined,
     severity: filterInput.severity || undefined,
     date_from: filterInput.date_from || undefined,
-    date_to: filterInput.date_to || undefined,
     sort_by: filterInput.sort_by,
     sort_order: filterInput.sort_order,
-    company_name: filterInput.company_name || undefined,
   });
+
+  const handleColumnSort = (col: string) => {
+    const newOrder = filters.sort_by === col && filters.sort_order === "desc" ? "asc" : "desc";
+    const newFilters = { ...filters, sort_by: col, sort_order: newOrder as "asc" | "desc" };
+    setFilters(newFilters);
+    setFilterInput((f) => ({ ...f, sort_by: col, sort_order: newOrder as "asc" | "desc" }));
+  };
   const handleFilterReset = () => {
     setFilterInput({ machine_name: "", location: "", status: "", severity: "", date_from: "", date_to: "", sort_by: "reported_at", sort_order: "desc", company_name: "" });
     setFilters({});
@@ -460,106 +465,65 @@ export default function ReportList() {
 
         {/* フィルター */}
         <div className="bg-white rounded-xl border border-slate-200 px-4 py-3.5 shadow-sm">
-          <div className="flex flex-wrap gap-3 items-end">
-            {(isAdmin || isMaker) && (
+          <div className="flex flex-wrap gap-3 items-end justify-between">
+            <div className="flex flex-wrap gap-3 items-end">
               <div>
-                <label className="block text-xs font-semibold text-slate-500 mb-1">会社名</label>
+                <label className="block text-xs font-semibold text-slate-500 mb-1">機器名</label>
                 <input
                   type="text"
-                  value={filterInput.company_name}
-                  onChange={(e) => setFilterInput((f) => ({ ...f, company_name: e.target.value }))}
+                  value={filterInput.machine_name}
+                  onChange={(e) => setFilterInput((f) => ({ ...f, machine_name: e.target.value }))}
                   placeholder="絞り込み..."
                   className="border border-slate-200 bg-slate-50 rounded-lg px-3 py-2 text-sm w-36 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white transition"
                 />
               </div>
-            )}
-            <div>
-              <label className="block text-xs font-semibold text-slate-500 mb-1">機器名</label>
-              <input
-                type="text"
-                value={filterInput.machine_name}
-                onChange={(e) => setFilterInput((f) => ({ ...f, machine_name: e.target.value }))}
-                placeholder="絞り込み..."
-                className="border border-slate-200 bg-slate-50 rounded-lg px-3 py-2 text-sm w-36 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white transition"
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-semibold text-slate-500 mb-1">場所</label>
-              <input
-                type="text"
-                value={filterInput.location}
-                onChange={(e) => setFilterInput((f) => ({ ...f, location: e.target.value }))}
-                placeholder="絞り込み..."
-                className="border border-slate-200 bg-slate-50 rounded-lg px-3 py-2 text-sm w-36 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white transition"
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-semibold text-slate-500 mb-1">ステータス</label>
-              <select
-                value={filterInput.status}
-                onChange={(e) => setFilterInput((f) => ({ ...f, status: e.target.value }))}
-                className="border border-slate-200 bg-slate-50 rounded-lg px-3 py-2 text-sm w-32 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white transition"
-              >
-                <option value="">すべて</option>
-                <option value="open">未対応</option>
-                <option value="in_progress">対応中</option>
-                <option value="resolved">解決済み</option>
-              </select>
-            </div>
-            <div>
-              <label className="block text-xs font-semibold text-slate-500 mb-1">重要度</label>
-              <select
-                value={filterInput.severity}
-                onChange={(e) => setFilterInput((f) => ({ ...f, severity: e.target.value }))}
-                className="border border-slate-200 bg-slate-50 rounded-lg px-3 py-2 text-sm w-28 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white transition"
-              >
-                <option value="">すべて</option>
-                <option value="high">高</option>
-                <option value="medium">中</option>
-                <option value="low">低</option>
-              </select>
-            </div>
-            <div>
-              <label className="block text-xs font-semibold text-slate-500 mb-1">開始日</label>
-              <input
-                type="date"
-                value={filterInput.date_from}
-                onChange={(e) => setFilterInput((f) => ({ ...f, date_from: e.target.value }))}
-                className="border border-slate-200 bg-slate-50 rounded-lg px-3 py-2 text-sm w-36 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white transition"
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-semibold text-slate-500 mb-1">終了日</label>
-              <input
-                type="date"
-                value={filterInput.date_to}
-                onChange={(e) => setFilterInput((f) => ({ ...f, date_to: e.target.value }))}
-                className="border border-slate-200 bg-slate-50 rounded-lg px-3 py-2 text-sm w-36 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white transition"
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-semibold text-slate-500 mb-1">並び順</label>
-              <div className="flex gap-1">
+              <div>
+                <label className="block text-xs font-semibold text-slate-500 mb-1">場所</label>
+                <input
+                  type="text"
+                  value={filterInput.location}
+                  onChange={(e) => setFilterInput((f) => ({ ...f, location: e.target.value }))}
+                  placeholder="絞り込み..."
+                  className="border border-slate-200 bg-slate-50 rounded-lg px-3 py-2 text-sm w-36 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white transition"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-500 mb-1">ステータス</label>
                 <select
-                  value={filterInput.sort_by}
-                  onChange={(e) => setFilterInput((f) => ({ ...f, sort_by: e.target.value }))}
+                  value={filterInput.status}
+                  onChange={(e) => setFilterInput((f) => ({ ...f, status: e.target.value }))}
+                  className="border border-slate-200 bg-slate-50 rounded-lg px-3 py-2 text-sm w-32 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white transition"
+                >
+                  <option value="">すべて</option>
+                  <option value="open">未対応</option>
+                  <option value="in_progress">対応中</option>
+                  <option value="resolved">解決済み</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-500 mb-1">重要度</label>
+                <select
+                  value={filterInput.severity}
+                  onChange={(e) => setFilterInput((f) => ({ ...f, severity: e.target.value }))}
                   className="border border-slate-200 bg-slate-50 rounded-lg px-3 py-2 text-sm w-28 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white transition"
                 >
-                  <option value="reported_at">報告日時</option>
-                  <option value="severity">重要度</option>
-                  <option value="status">ステータス</option>
+                  <option value="">すべて</option>
+                  <option value="high">高</option>
+                  <option value="medium">中</option>
+                  <option value="low">低</option>
                 </select>
-                <button
-                  type="button"
-                  onClick={() => setFilterInput((f) => ({ ...f, sort_order: f.sort_order === "desc" ? "asc" : "desc" }))}
-                  className="border border-slate-200 bg-slate-50 hover:bg-slate-100 rounded-lg px-2.5 py-2 text-sm text-slate-600 transition"
-                  title={filterInput.sort_order === "desc" ? "降順" : "昇順"}
-                >
-                  {filterInput.sort_order === "desc" ? "↓" : "↑"}
-                </button>
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-500 mb-1">開始日</label>
+                <input
+                  type="date"
+                  value={filterInput.date_from}
+                  onChange={(e) => setFilterInput((f) => ({ ...f, date_from: e.target.value }))}
+                  className="border border-slate-200 bg-slate-50 rounded-lg px-3 py-2 text-sm w-36 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white transition"
+                />
               </div>
             </div>
-            <div className="flex gap-2">
+            <div className="flex gap-2 shrink-0">
               <button
                 onClick={handleFilterApply}
                 className="bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold px-4 py-2 rounded-lg transition-colors"
@@ -606,9 +570,39 @@ export default function ReportList() {
                       <th className="px-4 py-3 text-left text-xs font-semibold text-slate-400 uppercase tracking-wider w-32">会社名</th>
                     )}
                     <th className="px-4 py-3 text-left text-xs font-semibold text-slate-400 uppercase tracking-wider">場所</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-slate-400 uppercase tracking-wider w-20">重要度</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-slate-400 uppercase tracking-wider w-44">ステータス</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-slate-400 uppercase tracking-wider w-36">報告日時</th>
+                    <th
+                      className="px-4 py-3 text-left text-xs font-semibold text-slate-400 uppercase tracking-wider w-20 cursor-pointer select-none group/th"
+                      onClick={() => handleColumnSort("severity")}
+                    >
+                      <span className="flex items-center gap-1">
+                        重要度
+                        <span className={`transition-opacity text-[10px] ${filters.sort_by === "severity" ? "opacity-100" : "opacity-0 group-hover/th:opacity-50"}`}>
+                          {filters.sort_by === "severity" && filters.sort_order === "asc" ? "▲" : "▼"}
+                        </span>
+                      </span>
+                    </th>
+                    <th
+                      className="px-4 py-3 text-left text-xs font-semibold text-slate-400 uppercase tracking-wider w-44 cursor-pointer select-none group/th"
+                      onClick={() => handleColumnSort("status")}
+                    >
+                      <span className="flex items-center gap-1">
+                        ステータス
+                        <span className={`transition-opacity text-[10px] ${filters.sort_by === "status" ? "opacity-100" : "opacity-0 group-hover/th:opacity-50"}`}>
+                          {filters.sort_by === "status" && filters.sort_order === "asc" ? "▲" : "▼"}
+                        </span>
+                      </span>
+                    </th>
+                    <th
+                      className="px-4 py-3 text-left text-xs font-semibold text-slate-400 uppercase tracking-wider w-36 cursor-pointer select-none group/th"
+                      onClick={() => handleColumnSort("reported_at")}
+                    >
+                      <span className="flex items-center gap-1">
+                        報告日時
+                        <span className={`transition-opacity text-[10px] ${filters.sort_by === "reported_at" || !filters.sort_by ? "opacity-100" : "opacity-0 group-hover/th:opacity-50"}`}>
+                          {filters.sort_order === "asc" && filters.sort_by === "reported_at" ? "▲" : "▼"}
+                        </span>
+                      </span>
+                    </th>
                     <th className="px-4 py-3 text-left text-xs font-semibold text-slate-400 uppercase tracking-wider w-24">担当者</th>
                     <th className="px-4 py-3 text-left text-xs font-semibold text-slate-400 uppercase tracking-wider w-24">添付</th>
                     <th className="px-4 py-3 text-right text-xs font-semibold text-slate-400 uppercase tracking-wider">操作</th>
