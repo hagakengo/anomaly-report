@@ -160,15 +160,6 @@ class ReportListCreateView(APIView):
             company_name=request.user.company_name,
         )
 
-        if report.severity == 'high':
-            from .email_utils import send_high_severity_email
-            try:
-                send_high_severity_email(
-                    report.id, report.machine_name, report.location, report.description
-                )
-            except Exception:
-                pass
-
         return Response(ReportSerializer(report).data, status=status.HTTP_201_CREATED)
 
 
