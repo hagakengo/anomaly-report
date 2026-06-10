@@ -2,21 +2,18 @@ from rest_framework import serializers
 
 from .models import CheckItem, Message, Report, StatusLog
 
-
+#報告データをJSONに変換するシリアライザー。
 class ReportSerializer(serializers.ModelSerializer):
-    """
-    報告データをJSONに変換するシリアライザー。
 
-    【工夫点】
-    user_id / assignee_id は ForeignKey だが、フロントに返すのは ID だけでよい。
-    read_only=True にすることで受け取りには使わず、返却専用フィールドにしている。
-    reported_at はフォーマットを統一することでフロントの日時パースを容易にする。
-    """
+    #user_id / assignee_id は ForeignKey だが、フロントに返すのは ID だけでよい。
+    #read_only=True にすることで受け取りには使わず、返却専用フィールドにしている。
+    #reported_at はフォーマットを統一することでフロントの日時パースを容易にする。
+
 
     user_id     = serializers.IntegerField(read_only=True)
     assignee_id = serializers.IntegerField(read_only=True, allow_null=True)
 
-    # '%Y-%m-%d %H:%M:%S' 形式に統一。フロントで new Date() に渡しやすい。
+    #  YYYY-MM-DD HH-MM-SS形式に統一。フロントで new Date() に渡しやすい。
     reported_at = serializers.DateTimeField(format='%Y-%m-%d %H:%M:%S', read_only=True)
 
     class Meta:
@@ -27,16 +24,12 @@ class ReportSerializer(serializers.ModelSerializer):
             'user_id', 'assignee_id', 'assignee_name',
         ]
 
-
+#チャットメッセージのシリアライザー。
 class MessageSerializer(serializers.ModelSerializer):
-    """
-    チャットメッセージのシリアライザー。
 
-    【工夫点】
-    sender_name は ForeignKey 先のフィールドなので、
-    SerializerMethodField で get_sender_name() を定義して取得している。
-    送信者が削除済みの場合は '不明' を返してエラーにしない。
-    """
+    #sender_name は ForeignKey 先のフィールド
+    #SerializerMethodField で get_sender_name() を定義して取得している。
+    #送信者が削除済みの場合は '不明' を返してエラーにしない。
 
     sender_id   = serializers.IntegerField(read_only=True)
     report_id   = serializers.IntegerField(read_only=True)
@@ -53,27 +46,21 @@ class MessageSerializer(serializers.ModelSerializer):
         # sender が None（退会済みユーザー）の場合でも安全に処理する
         return obj.sender.username if obj.sender else '不明'
 
-
+#確認項目のシリアライザー。シンプルな CRUD 用途なので最小限の定義。
 class CheckItemSerializer(serializers.ModelSerializer):
-    """確認項目のシリアライザー。シンプルな CRUD 用途なので最小限の定義。"""
 
     class Meta:
         model = CheckItem
         fields = ['id', 'content', 'machine_name', 'order_index']
 
-
+#ステータス変更履歴のシリアライザー。
+ #user が削除済みの場合は 'システム' と表示してエラーにしない。
 class StatusLogSerializer(serializers.ModelSerializer):
-    """
-    ステータス変更履歴のシリアライザー。
-
-    【工夫点】
-    changed_by は「誰が変えたか」を名前で返すカスタムフィールド。
-    user が削除済みの場合は 'システム' と表示してエラーにしない。
-    """
 
     user_id    = serializers.IntegerField(read_only=True, allow_null=True)
     report_id  = serializers.IntegerField(read_only=True)
     changed_at = serializers.DateTimeField(format='%Y-%m-%d %H:%M:%S', read_only=True)
+    #changed_by は「誰が変えたか」を名前で返すカスタムフィールド。
     changed_by = serializers.SerializerMethodField()
 
     class Meta:

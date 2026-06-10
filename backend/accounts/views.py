@@ -44,10 +44,15 @@ class SignupView(APIView):
         serializer.is_valid(raise_exception=True)  # バリデーション失敗時は自動で400を返す
         data = serializer.validated_data
 
-        # メールアドレスの重複チェック（DB のユニーク制約に頼らず先にチェックして丁寧なエラーを返す）
         if User.objects.filter(email=data['email']).exists():
             return Response(
                 {'detail': 'このメールアドレスは既に使用されています'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if User.objects.filter(username=data['username']).exists():
+            return Response(
+                {'detail': 'この名前は既に使用されています'},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 

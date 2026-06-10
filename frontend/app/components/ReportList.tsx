@@ -134,6 +134,7 @@ export default function ReportList() {
   const [toasts, setToasts] = useState<(NewMessageItem & { key: string })[]>([]);
   const [newReportToasts, setNewReportToasts] = useState<NewReportToast[]>([]);
   const prevSummaryRef = useRef<MessageSummary[]>([]);
+  const isFirstPollRef = useRef(true);
 
   const dismissNewReportToast = (key: string) =>
     setNewReportToasts((prev) => prev.filter((t) => t.key !== key));
@@ -158,26 +159,47 @@ export default function ReportList() {
     }
   }, [filters, logout, router]);
 
-  useEffect(() => { fetchReports(); }, [fetchReports]);
+  useEffect(() => {
+    fetchReports();
+    const interval = setInterval(fetchReports, 30_000);
+    return () => clearInterval(interval);
+  }, [fetchReports]);
+
+  // reportsが更新されたとき、現存しないIDをdismissedIdsから削除する
+  useEffect(() => {
+    if (reports.length === 0) return;
+    const validIds = new Set(reports.map((r) => r.id));
+    setDismissedIds((prev) => {
+      const cleaned = new Set([...prev].filter((id) => validIds.has(id)));
+      if (cleaned.size !== prev.size) {
+        localStorage.setItem("dismissed_new_reports", JSON.stringify([...cleaned]));
+        return cleaned;
+      }
+      return prev;
+    });
+  }, [reports]);
 
   useEffect(() => {
     requestNotificationPermission();
     const pollSummary = async () => {
       try {
         const next = await getUnreadSummary();
-        const newItems = detectNewMessages(prevSummaryRef.current, next);
-        if (newItems.length > 0) {
-          if (document.visibilityState === "visible") {
-            setToasts((prev) => [
-              ...prev,
-              ...newItems.map((item) => ({ ...item, key: `${item.report_id}-${item.latest_message_id}` })),
-            ]);
-          } else {
-            for (const item of newItems) {
-              showBrowserNotification(`新着メッセージ (報告 #${item.report_id})`, `${item.sender_name}: ${item.preview}`, item.report_id);
+        if (!isFirstPollRef.current) {
+          const newItems = detectNewMessages(prevSummaryRef.current, next);
+          if (newItems.length > 0) {
+            if (document.visibilityState === "visible") {
+              setToasts((prev) => [
+                ...prev,
+                ...newItems.map((item) => ({ ...item, key: `${item.report_id}-${item.latest_message_id}` })),
+              ]);
+            } else {
+              for (const item of newItems) {
+                showBrowserNotification(`新着メッセージ (報告 #${item.report_id})`, `${item.sender_name}: ${item.preview}`, item.report_id);
+              }
             }
           }
         }
+        isFirstPollRef.current = false;
         prevSummaryRef.current = next;
         setUnreadCounts(computeUnreadCounts(next));
       } catch { /* サイレント */ }
@@ -595,7 +617,20 @@ export default function ReportList() {
                 <tbody className="divide-y divide-slate-50">
                   {visibleReports.map((report) => (
                     <tr key={report.id} className="hover:bg-slate-50/80 transition-colors group">
-                      <td className="px-4 py-3.5 text-slate-300 font-mono text-xs">#{report.id}</td>
+                      <td className="px-4 py-3.5 font-mono text-xs">
+                        <div className="relative inline-flex items-center gap-1">
+                          <span className="text-slate-300">#{report.id}</span>
+                          {unreadCounts[report.id] ? (
+                            <Link
+                              href={`/reports/${report.id}/chat`}
+                              className="bg-red-500 hover:bg-red-600 text-white text-[9px] font-bold rounded-full min-w-[16px] h-4 flex items-center justify-center px-0.5 transition-colors"
+                              title="未読メッセージあり — チャットを開く"
+                            >
+                              {unreadCounts[report.id]}
+                            </Link>
+                          ) : null}
+                        </div>
+                      </td>
                       <td className="px-4 py-3.5 max-w-[180px] truncate" title={report.machine_name}>
                         <Link href={`/reports/${report.id}`} className="font-semibold text-slate-800 hover:text-indigo-600 transition-colors">
                           {report.machine_name}
@@ -651,19 +686,8 @@ export default function ReportList() {
                         )}
                         {!report.file_path && <span className="text-slate-200 text-xs">—</span>}
                       </td>
-                      <td className="px-4 py-3.5 text-right">
+                      <td className="px-4 py-3.5 text-right whitespace-nowrap">
                         <div className="flex items-center justify-end gap-1.5">
-                          <Link
-                            href={`/reports/${report.id}/chat`}
-                            className="relative inline-flex items-center gap-1 text-xs text-slate-500 hover:text-indigo-600 bg-slate-100 hover:bg-indigo-50 px-2.5 py-1.5 rounded-lg transition-colors font-medium"
-                          >
-                            チャット
-                            {unreadCounts[report.id] ? (
-                              <span className="absolute -top-1.5 -right-1.5 bg-red-500 text-white text-[9px] font-bold rounded-full min-w-[16px] h-4 flex items-center justify-center px-0.5">
-                                {unreadCounts[report.id]}
-                              </span>
-                            ) : null}
-                          </Link>
                           {(isAdmin || isMaker) && (
                             <>
                               <Link

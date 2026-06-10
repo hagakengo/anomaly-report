@@ -24,7 +24,7 @@ from .serializers import (
     ReportSerializer,
     StatusLogSerializer,
 )
-
+#API処理一覧
 ALLOWED_EXTENSIONS = {
     'image': {'.jpg', '.jpeg', '.png', '.gif', '.webp'},
     'video': {'.mp4', '.mov', '.avi', '.webm'},

@@ -16,33 +16,32 @@ class Report(models.Model):
     # TextField は CharField と違い文字数の上限がない。長文の説明文に使う。
     description = models.TextField()
 
-    # 重要度。high/medium/low の3段階。デフォルトは medium にしておくことで
-    # 入力漏れがあっても「中程度」として扱われ、報告が握り潰されにくい。
+    #重要度。high/medium/low の3段階。デフォルトは medium にしておく
+    #入力漏れがあっても「中程度」として扱われ、報告が握り潰されにくい。
     severity = models.CharField(max_length=20, default='medium')
 
-    # 対応状況。open→in_progress→resolved の順に進む想定。
     # デフォルトを open にすることで、登録直後は「未対応」として表示される。
     status = models.CharField(max_length=20, default='open')
 
-    # 添付ファイル。任意項目なので blank=True（フォーム省略OK）、null=True（DB上もNULL許可）。
-    # file_path はサーバー上の保存パス、file_type は image/video の種別を保持する。
+    # 添付ファイル。任意項目なので blank=True、null=True(必須項目ではない)
+    # file_path はサーバー上の保存パスを保持する。
     file_path = models.CharField(max_length=500, blank=True, null=True)
+    #file_type は image/videoの種別を保持する。
     file_type = models.CharField(max_length=20, blank=True, null=True)
 
-    # 報告作成時にユーザーの company_name をコピーして保存する。
-    # ユーザー情報が後から変わっても「報告した時点の会社名」を保持するため。
+    # 報告作成時にユーザーの company_name をコピーして保存する。（会社名は必須項目ではない）
     company_name = models.CharField(max_length=200, blank=True, null=True)
 
-    # 報告日時。デフォルトで現在時刻が入る。auto_now_add と違い手動でも上書き可能。
+    # 報告日時。DateTimeFieldを使うとデフォルトで現在時刻が入る。auto_now_add と違い手動でも上書き可能。
     reported_at = models.DateTimeField(default=timezone.now)
 
-    # 報告者（お客さん）。ユーザーが退会してもレポートを残したいので
+    # 報告者（お客さん）。ユーザーが退会してもレポートを残したい
     # on_delete=SET_NULL にしている（CASCADE だとユーザー削除時に報告も消えてしまう）。
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,
         null=True,
-        related_name='reports',        # user.reports.all() で逆引きできるようにする
+        related_name='reports',        
     )
 
     # 担当者（メーカー側）。任意なので blank=True。
@@ -56,8 +55,7 @@ class Report(models.Model):
     )
 
     # 担当者名を文字列でも保存しておく。
-    # assignee（外部キー）だけだとユーザー削除後に名前が表示できなくなるため、
-    # 名前のスナップショットをここに保持している。
+    # assignee（外部キー）だけだとユーザー削除後に名前が表示できなくなる
     assignee_name = models.CharField(max_length=200, blank=True, null=True)
 
     class Meta:
@@ -67,13 +65,12 @@ class Report(models.Model):
 
 
 class Message(models.Model):
-    """
-    報告ごとのチャットメッセージ。
-    お客さんとメーカーが1つの報告スレッド内でやり取りするためのテーブル。
-    """
+    #報告ごとのチャットメッセージ。
+    #お客さんとメーカーが1つの報告スレッド内でやり取りするためのテーブル。
+    
 
     # どの報告のメッセージかを紐付ける。
-    # CASCADE にすることで報告が削除されたらメッセージも一緒に消える（孤立データを防ぐ）。
+    # CASCADE にすることで報告が削除されたらメッセージも一緒に消える。
     report = models.ForeignKey(Report, on_delete=models.CASCADE, related_name='messages')
 
     sender = models.ForeignKey(
@@ -87,26 +84,23 @@ class Message(models.Model):
 
     class Meta:
         db_table = 'messages'
-        # メッセージは古い順に並べる（チャットUIの自然な表示順）
+        # メッセージは古い順に並べる（created_atを使うことで降順になる)
         ordering = ['created_at']
 
-
+  #報告前にユーザーが確認すべきチェックリスト項目。
 class CheckItem(models.Model):
-    """
-    報告前にユーザーが確認すべきチェックリスト項目。
-    メーカー側が設定し、報告フォームで表示される。
-
-    【工夫点】
-    machine_name を null にすることで「全機器共通の確認項目」を表現している。
-    特定機器向けの項目と共通項目を1つのテーブルで管理できるシンプルな設計。
-    """
+    
+    #メーカー側が設定し、報告フォームで表示される。
+    #machine_name を null にすることで「全機器共通の確認項目」を表現している。
+    #特定機器向けの項目と共通項目を1つのテーブルで管理できるシンプルな設計。
+    
 
     content = models.CharField(max_length=500)
 
     # null = 全機器共通、値あり = その機器専用
     machine_name = models.CharField(max_length=200, blank=True, null=True)
 
-    # チェック項目の表示順を制御する。小さい数字が先に表示される。
+    # チェック項目の表示を小さい数字が先に表示する。
     order_index = models.IntegerField(default=0)
 
     created_at = models.DateTimeField(default=timezone.now)
@@ -116,17 +110,10 @@ class CheckItem(models.Model):
         # 機器名でグループ化し、その中で order_index 順に並べる
         ordering = ['machine_name', 'order_index', 'id']
 
-
+    #報告ステータスの変更履歴（監査ログ）。
+    #「誰がいつ、何から何にステータスを変えたか」を記録する。
 class StatusLog(models.Model):
-    """
-    報告ステータスの変更履歴（監査ログ）。
-    「誰がいつ、何から何にステータスを変えたか」を記録する。
-
-    【工夫点】
-    ステータスを直接書き換えるだけでなく、変更前後の値を別テーブルに残すことで
-    対応の経緯が追跡できる。実務では「監査ログ（audit log）」と呼ばれるパターン。
-    """
-
+    
     report = models.ForeignKey(Report, on_delete=models.CASCADE, related_name='status_logs')
 
     # 誰が変更したかを記録。SET_NULL にしてユーザー削除後もログを残す。

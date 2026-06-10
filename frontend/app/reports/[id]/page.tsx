@@ -108,12 +108,6 @@ export default function ReportDetailPage() {
             <p className="text-xs text-slate-400">{report.reported_at.replace("T", " ")}</p>
           </div>
           <div className="flex items-center gap-2 shrink-0">
-            <Link
-              href={`/reports/${report.id}/chat`}
-              className="inline-flex items-center gap-1.5 text-xs font-semibold text-indigo-600 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 px-3 py-1.5 rounded-lg transition-colors"
-            >
-              チャット
-            </Link>
             {(isAdmin || isMaker) && (
               <Link
                 href={`/reports/${report.id}/edit`}
@@ -303,7 +297,7 @@ export default function ReportDetailPage() {
             href={`/reports/${report.id}/chat`}
             className="bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold py-3 rounded-xl text-center transition-colors shadow-sm"
           >
-            チャットで追記する
+            チャット
           </Link>
           <button
             onClick={() => router.push("/")}
