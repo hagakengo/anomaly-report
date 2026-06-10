@@ -135,6 +135,7 @@ export default function ReportList() {
   const [newReportToasts, setNewReportToasts] = useState<NewReportToast[]>([]);
   const prevSummaryRef = useRef<MessageSummary[]>([]);
   const isFirstPollRef = useRef(true);
+  const isInitialLoadRef = useRef(true);
 
   const dismissNewReportToast = (key: string) =>
     setNewReportToasts((prev) => prev.filter((t) => t.key !== key));
@@ -142,7 +143,7 @@ export default function ReportList() {
     setToasts((prev) => prev.filter((t) => t.key !== key));
 
   const fetchReports = useCallback(async () => {
-    setLoading(true);
+    if (isInitialLoadRef.current) setLoading(true);
     setError(null);
     try {
       const data = await getReports(filters);
@@ -155,6 +156,7 @@ export default function ReportList() {
       }
       setError(e instanceof Error ? e.message : "エラーが発生しました");
     } finally {
+      isInitialLoadRef.current = false;
       setLoading(false);
     }
   }, [filters, logout, router]);
