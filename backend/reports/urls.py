@@ -3,7 +3,7 @@ from django.urls import path
 from . import views
 
 urlpatterns = [
-    # ヘルスチェック。デプロイ先（Railway）が「サーバーが生きているか」確認するために使う。
+    # ヘルスチェック。デプロイ先（EC2）のロードバランサーが「サーバーが生きているか」確認するために使う。
     path('', lambda req: __import__('django.http', fromlist=['JsonResponse']).JsonResponse({'status': 'ok'})),
 
     # 【重要】stats は /reports/<int:report_id> より先に定義する必要がある。

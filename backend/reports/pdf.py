@@ -12,17 +12,14 @@ from reportlab.platypus import Image, Paragraph, SimpleDocTemplate, Spacer, Tabl
 
 BASE_DIR = os.path.dirname(os.path.dirname(__file__))
 
-
+#日本語フォントを環境に応じて自動で選択・登録する。
 def _register_japanese_font() -> str:
-    """
-    日本語フォントを環境に応じて自動で選択・登録する。
+    
 
-    【工夫点】
-    Mac / Windows / Linux / サーバー（Railway）など環境によってフォントの場所が異なる。
-    複数の候補パスを上から試し、存在するものを使うことで環境依存を解消している。
-    どれも見つからない場合は英字フォント 'Helvetica' にフォールバックする
-    （日本語が豆腐になるが、クラッシュよりはマシな選択）。
-    """
+    
+    #Mac / Windows / Linux / サーバー（EC2）など環境によってフォントの場所が異なる。
+    #複数の候補パスを上から試し、存在するものを使うことで環境依存を解消している。
+    #どれも見つからない場合は英字フォント 'Helvetica' にフォールバックする
     candidates = [
         (os.path.join(BASE_DIR, 'ipaexg.ttf'), 'IPAexGothic'),         # プロジェクト同梱フォント（最優先）
         ('/System/Library/Fonts/ヒラギノ角ゴ ProN W3.ttc', 'HiraginoKaku'),  # Mac
@@ -39,7 +36,7 @@ def _register_japanese_font() -> str:
     return 'Helvetica'
 
 
-# モジュール読み込み時に一度だけフォントを登録する（リクエストのたびに登録しないための最適化）
+# モジュール読み込み時に一度だけフォントを登録する
 FONT = _register_japanese_font()
 
 # 重要度・ステータスの日本語ラベル変換テーブル
@@ -53,18 +50,12 @@ SEVERITY_COLOR = {
     'low':    colors.HexColor('#22c55e'),  # 緑
 }
 
-
+#Report オブジェクトを受け取り、PDF のバイト列を返す。
 def generate_pdf(report) -> bytes:
-    """
-    Report オブジェクトを受け取り、PDF のバイト列を返す。
-
-    【工夫点】
-    ファイルに書き出さず io.BytesIO（メモリ上のバッファ）に書き込むことで、
-    ディスクI/Oを省略しレスポンスに直接渡せる。
-    reportlab の SimpleDocTemplate + Platypus（story リスト）で
-    要素を積み上げるように PDF を構成している。
-    """
-
+    
+    #ファイルに書き出さず io.BytesIOに書き込む
+    #ディスクI/Oを省略しブラウザに直接送信することができる。
+    #reportlab の SimpleDocTemplate + Platypus（story リスト）
     # メモリ上にPDFを作成する（ディスクに保存しない）
     buf = io.BytesIO()
     doc = SimpleDocTemplate(
